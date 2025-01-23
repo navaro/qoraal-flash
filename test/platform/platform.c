@@ -38,6 +38,19 @@ platform_start ()
     return 0 ;
 }
 
+
+void *      
+platform_malloc (QORAAL_HEAP heap, size_t size)
+{
+    return malloc (size) ;
+}
+void        
+
+platform_free (QORAAL_HEAP heap, void *mem)
+{
+    free (mem) ;
+}
+
 void
 platform_print (const char *format)
 {
@@ -62,11 +75,6 @@ platform_wdt_kick (void)
 {
     return 20 ;
 }
-
-
-
-
-
 
 int32_t
 platform_flash_erase (uint32_t addr_start, uint32_t addr_end)

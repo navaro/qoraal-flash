@@ -50,8 +50,8 @@
 
 #define NVOL3_PAGE_SIZE                         0x20            /**< @brief one page used at the start of the sector */
 #define NVOL3_HEADROOM                          0x04            /**< @brief min available slots before volume is full */
-#define NVOL3_MALLOC(size)                      qoraal_malloc(size)
-#define NVOL3_FREE(mem)                         qoraal_free(mem)
+#define NVOL3_MALLOC(size)                      qoraal_malloc(QORAAL_HeapAuxiliary, size)
+#define NVOL3_FREE(mem)                         qoraal_free(QORAAL_HeapAuxiliary, mem)
 
 /*
  * ToDo: transactions

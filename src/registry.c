@@ -49,11 +49,16 @@ static STRSUB_HANDLER_T _registry_strsub ;
 #endif
 
 static void 
-scratch_set_key(REGISTRY_KEY_T key, uint16_t type) {
+scratch_set_key(REGISTRY_KEY_T key, uint32_t len, uint16_t type) {
     size_t key_size = _registry_inst->config->key_size;
 
     // Copy the key
-    strncpy((char*)_registry_scratch_value->key_and_data, key, key_size);
+    if (!len) {
+        strncpy((char*)_registry_scratch_value->key_and_data, key, key_size);
+    } else {
+        memset ((char*)_registry_scratch_value->key_and_data, 0, key_size);
+        memcpy ((char*)_registry_scratch_value->key_and_data, key, len);
+    }
 
     // Set reserved to 0
     uint16_t* pres = (uint16_t*)&_registry_scratch_value->key_and_data[key_size];
@@ -192,7 +197,7 @@ registry_value_delete (REGISTRY_KEY_T id)
     DBG_CHECK_T(id, E_PARM, "registry_value_delete id") ;
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, REGISTRY_TYPE_INT) ;
+    scratch_set_key (id, 0, REGISTRY_TYPE_INT) ;
     res = nvol3_record_delete(_registry_inst, scratch_get()) ;
     os_mutex_unlock (&_registry_mutex) ;
 
@@ -207,7 +212,7 @@ registry_value_type (REGISTRY_KEY_T id)
     DBG_CHECK_T(id, E_PARM, "registry_value_type id") ;
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, 0) ;
+    scratch_set_key (id, 0, 0) ;
     if (nvol3_record_get(_registry_inst, scratch_get()) > scratch_key_type_len ()) {
         res = scratch_get_type () ;
     }
@@ -226,7 +231,7 @@ registry_value_valid (REGISTRY_KEY_T id, uint16_t type)
     DBG_CHECK_T(id, E_PARM, "registry_value_valid id") ;
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, type) ;
+    scratch_set_key (id, 0, type) ;
     if (nvol3_record_get(_registry_inst, scratch_get()) > scratch_key_type_len ()) {
         res = REGISTRY_GET_TYPE(scratch_get_type ()) == (type)  ;
     }
@@ -243,7 +248,7 @@ registry_value_length (REGISTRY_KEY_T id)
     int32_t res ;
     DBG_CHECK_T(id, E_PARM, "registry_value_length id") ;
     os_mutex_lock (&_registry_mutex) ;
-    scratch_set_key (id, 0) ;
+    scratch_set_key (id, 0, 0) ;
     res = nvol3_record_key_and_data_length  (_registry_inst, scratch_get_key ()) ;
     if (res > scratch_key_type_len ()) {
         res -= scratch_key_type_len () ;
@@ -264,7 +269,7 @@ registry_value_get(REGISTRY_KEY_T id, char* value, uint16_t* type, unsigned int 
     DBG_CHECK_T(id, E_PARM, "registry_value_get id") ;
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, 0) ;
+    scratch_set_key (id, 0, 0) ;
     memset(value, 0, length) ;
     if ((res = nvol3_record_get(_registry_inst, scratch_get())) > scratch_key_type_len ()) {
         res -= scratch_key_type_len () ;
@@ -297,7 +302,7 @@ registry_value_set(REGISTRY_KEY_T id, const char* value, uint16_t type, unsigned
     DBG_CHECK_T(id, E_PARM, "registry_value_set id") ;
     if (length > scratch_value_len()) return E_PARM ;
     os_mutex_lock (&_registry_mutex) ;
-    scratch_set_key (id, type) ;
+    scratch_set_key (id, 0, type) ;
     memcpy(scratch_get_value (), value, length) ;
 
     res =  nvol3_record_set (_registry_inst, scratch_get(), length + scratch_key_type_len ()) ;
@@ -505,7 +510,7 @@ registry_blob_value_set (REGISTRY_KEY_T id, const uint8_t * blob)
 
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, REGISTRY_TYPE_BLOB) ;
+    scratch_set_key (id, 0, REGISTRY_TYPE_BLOB) ;
     for (i=0, cnt=0; cnt<scratch_value_len(); cnt++) {
         while (blob[i] && isspace((int)blob[i])) {
             i++ ;
@@ -540,7 +545,7 @@ registry_blob_value_get (REGISTRY_KEY_T id, uint8_t * blob, uint32_t length)
     DBG_CHECK_T(id, E_PARM, "registry_blob_value_set id") ;
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (id, 0) ;
+    scratch_set_key (id, 0, 0) ;
     memset(blob, 0, length) ;
     if ((res = nvol3_record_get(_registry_inst, scratch_get())) > scratch_key_type_len ()) {
         res -= scratch_key_type_len () ;
@@ -581,7 +586,7 @@ registry_strsub_cb(STRSUB_REPLACE_CB cb, const char * str, size_t len, uint32_t 
 
     os_mutex_lock (&_registry_mutex) ;
 
-    scratch_set_key (str, 0) ;
+    scratch_set_key (str, len, 0) ;
 
     if ((res = nvol3_record_get(_registry_inst, scratch_get())) > scratch_key_type_len ()) {
         res -= scratch_key_type_len () ;
