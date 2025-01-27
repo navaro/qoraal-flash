@@ -35,6 +35,9 @@
 #include "qoraal-flash/nvram/nlog2.h"
 
 
+extern void     keep_syslogcmds (void) ;
+
+
 static p_mutex_t    _syslog_mutex ;
 
 static char                              _syslog_log_buffer[SYSLOGLOG_MAX_MSG_SIZE + sizeof(QORAAL_LOG_MSG_T)]   ;
@@ -65,6 +68,7 @@ static bool _syslog_started = false ;
  */
 int32_t syslog_init (void)
 {
+    keep_syslogcmds () ; 
 
     return EOK ;
 }

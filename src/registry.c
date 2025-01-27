@@ -49,7 +49,6 @@ static STRSUB_HANDLER_T _registry_strsub ;
 #endif
 
 extern void     keep_registrycmds (void) ;
-extern void     keep_syslogcmds (void) ;
 
 static void 
 scratch_set_key(REGISTRY_KEY_T key, uint32_t len, uint16_t type) {
@@ -119,7 +118,6 @@ registry_init(void)
 #endif
 
     keep_registrycmds () ;
-    keep_syslogcmds () ;
     
     return EOK ;
 }
