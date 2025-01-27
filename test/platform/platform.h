@@ -14,7 +14,6 @@ uint32_t    platform_wdt_kick (void) ;
 uint32_t    platform_current_time (void) ;
 void        platform_wait_for_exit (SVC_SERVICES_T service_id) ;
 
-
 int32_t     platform_flash_read (uint32_t addr, uint32_t len, uint8_t * data) ;
 int32_t     platform_flash_write (uint32_t addr, uint32_t len, const uint8_t * data) ;
 int32_t     platform_flash_erase (uint32_t addr_start, uint32_t addr_end) ;

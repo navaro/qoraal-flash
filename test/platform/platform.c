@@ -5,6 +5,7 @@
 #include "qoraal/common/dictionary.h"
 #include "qoraal-flash/nvram/nvol3.h"
 #include "qoraal-flash/registry.h"
+#include "qoraal-flash/syslog.h"
 
 #define PLATFORM_FLASH_SIZE     (1024*1024*10)
 
@@ -13,13 +14,22 @@ static SVC_SERVICES_T _platform_complete_service_id = SVC_SERVICES_INVALID ;
 static uint8_t        _platform_flash[PLATFORM_FLASH_SIZE]  ;
 
 
-REGISTRY_INSTANCE_DECL(_regdef_nvol3_entry, \
-        platform_flash_read, platform_flash_write, platform_flash_erase, \
-        0, (64*1024), 
+REGISTRY_INSTANCE_DECL(_system_registry, \
+        0, 
+        64*1024, // total size is 64K * 2
         24, 
         128, 
         101)
 
+NLOG2_LOG_DECL(_info_log,
+        64*1024*2,
+        5,
+        8*1024) ;
+
+NLOG2_LOG_DECL(_assert_log,
+        64*1024 + 8*1024*5,
+        3,
+        4*1024) ;
 
 
 int32_t         
@@ -27,6 +37,7 @@ platform_init ()
 {
     platform_flash_erase (0, PLATFORM_FLASH_SIZE-1) ;
     registry_init () ;
+    syslog_init () ;
     return 0 ;
 }
 
@@ -34,7 +45,8 @@ int32_t
 platform_start ()
 {
     os_thread_sleep (100) ;
-    registry_start (&_regdef_nvol3_entry) ;
+    registry_start (&_system_registry) ;
+    syslog_start (&_info_log, &_assert_log) ;
     return 0 ;
 }
 

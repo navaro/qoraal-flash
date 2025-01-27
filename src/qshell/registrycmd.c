@@ -3,10 +3,10 @@
 #include "qoraal/svc/svc_shell.h"
 #include "qoraal-flash/registry.h"
 
-SVC_SHELL_CMD_DECL( "reg", qshell_reg,  "[entry] [value]");
-SVC_SHELL_CMD_DECL( "regadd", qshell_regadd,  "<entry> <value> [str/int/enum_type]");
-SVC_SHELL_CMD_DECL( "regdel", qshell_regdel,  "<entry>");
-SVC_SHELL_CMD_DECL( "regstats", qshell_regstats,  "");
+SVC_SHELL_CMD_DECL( "reg", qshell_cmd_reg,  "[entry] [value]");
+SVC_SHELL_CMD_DECL( "regadd", qshell_cmd_regadd,  "<entry> <value> [str/int/enum_type]");
+SVC_SHELL_CMD_DECL( "regdel", qshell_cmd_regdel,  "<entry>");
+SVC_SHELL_CMD_DECL( "regstats", qshell_cmd_regstats,  "");
 
 #define REGISTRY_VALUE_LENGT_MAX            180
 
@@ -53,7 +53,7 @@ reg_show(SVC_SHELL_IF_T * pif, const char * search, char * value, uint32_t len)
 }
 
 
-int32_t qshell_reg (SVC_SHELL_IF_T * pif, char** argv, int argc)
+int32_t qshell_cmd_reg (SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
     //uint32_t iterator ;
     //char* pstrentry = 0 ;
@@ -97,7 +97,7 @@ int32_t qshell_reg (SVC_SHELL_IF_T * pif, char** argv, int argc)
 }
 
 int32_t
-qshell_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
+qshell_cmd_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
     //REGISTRY_KEY_T key ;
     uint16_t type ;
@@ -164,7 +164,7 @@ qshell_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
     return res ;
 }
 
-int32_t qshell_regdel(SVC_SHELL_IF_T * pif, char** argv, int argc)
+int32_t qshell_cmd_regdel(SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
     int32_t res ;
 
@@ -180,9 +180,18 @@ int32_t qshell_regdel(SVC_SHELL_IF_T * pif, char** argv, int argc)
 }
 
 
-int32_t qshell_regstats (SVC_SHELL_IF_T * pif, char** argv, int argc)
+int32_t qshell_cmd_regstats (SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
     registry_log_status () ;
 
     return SVC_SHELL_CMD_E_OK ;
+}
+
+void
+keep_registrycmds(void)
+{
+    (void)qshell_cmd_reg ;
+    (void)qshell_cmd_regadd ;
+    (void)qshell_cmd_regdel ;
+    (void)qshell_cmd_regstats ;
 }

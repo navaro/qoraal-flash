@@ -24,9 +24,8 @@
 
 #include <string.h>
 #include <stdint.h>
-#include "qoraal/errordef.h"
-#include "qoraal/debug.h"
-
+#include "qoraal/qoraal.h"
+#include "qoraal-flash/qoraal.h"
 #include "qoraal-flash/nvram/nvol3.h"
 
 /*===========================================================================*/

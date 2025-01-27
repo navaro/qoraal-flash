@@ -6,6 +6,7 @@
 #include "qoraal/svc/svc_services.h"
 #include "qoraal/svc/svc_tasks.h"
 #include "qoraal/svc/svc_shell.h"
+#include "qoraal-flash/syslog.h"
 #include "services.h"
 
 /*===========================================================================*/
@@ -21,8 +22,8 @@
 /*===========================================================================*/
 /* Service Local Functions                                                   */
 /*===========================================================================*/
-
 static void     shell_logger_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg) ;
+static void     shell_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg) ;
 static int32_t  shell_out (void* ctx, uint32_t out, const char* str);
 static int32_t  shell_get_line (char * buffer, uint32_t len) ;
 
@@ -38,6 +39,7 @@ SVC_SHELL_CMD_DECL("hello", qshell_hello, "");
 
 static bool                 _shell_exit = false ;
 static LOGGER_CHANNEL_T     _shell_log_channel = { .fp = shell_logger_cb, .user = (void*)0, .filter = { { .mask = SVC_LOGGER_MASK, .type = SVC_LOGGER_SEVERITY_LOG | SVC_LOGGER_FLAGS_PROGRESS }, {0,0} } };
+static LOGGER_CHANNEL_T     _shell_syslog_channel = { .fp = shell_syslog_cb, .user = (void*)0, .filter = { { .mask = SVC_LOGGER_MASK, .type = SVC_LOGGER_SEVERITY_LOG | SVC_LOGGER_FLAGS_NO_TIMESTAMP }, {0,0} } };
 
 /*===========================================================================*/
 /* Service Functions                                                         */
@@ -67,10 +69,12 @@ shell_service_ctrl (uint32_t code, uintptr_t arg)
 
     case SVC_SERVICE_CTRL_START:
         svc_logger_channel_add (&_shell_log_channel) ;
+        svc_logger_channel_add (&_shell_syslog_channel) ;
         break ;
 
     case SVC_SERVICE_CTRL_STOP:
         svc_logger_channel_remove (&_shell_log_channel) ;
+        svc_logger_channel_remove (&_shell_syslog_channel) ;
         break ;
 
     case SVC_SERVICE_CTRL_STATUS:
@@ -181,6 +185,23 @@ shell_logger_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const cha
 {
     printf("--- %s\n", msg) ;
 }
+
+/**
+ * @brief       shell_syslog_cb
+ * @details     Callback function for logging messages from the shell.
+ *
+ * @param[in]   channel     The logger channel.
+ * @param[in]   type        The type of log message.
+ * @param[in]   facility    The logging facility.
+ * @param[in]   msg         The log message to display.
+ */
+void
+shell_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg)
+{
+    uint32_t log = SVC_LOGGER_GET_SEVERITY(type) < SVC_LOGGER_SEVERITY_ERROR ?  1 : 0 ;
+    syslog_append (log, SVC_LOGGER_GET_SEVERITY(type), facility, msg) ;
+}
+
 
 /**
  * @brief       qshell_version

@@ -1,8 +1,12 @@
 # Collect all source files
 set(FLASH_SRC
     nvram/nvol3.c
+    nvram/nlog2.c
     qshell/registrycmd.c
+    qshell/syslogcmd.c
     registry.c
+    syslog.c
+    qoraal.c
 )
 
 

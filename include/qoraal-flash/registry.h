@@ -27,6 +27,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "qoraal-flash/qoraal.h"
 #include "qoraal-flash/nvram/nvol3.h"
 
 
@@ -39,9 +40,9 @@
 /*===========================================================================*/
 
 
-#define REGISTRY_INSTANCE_DECL(name, read, write, erase, start_addr, sector_size, key_size, data_size, hashsize)  \
+#define REGISTRY_INSTANCE_DECL(name, start_addr, sector_size, key_size, data_size, hashsize)  \
         NVOL3_INSTANCE_DECL(name, \
-            read, write, erase, \
+            qoraal_flash_read, qoraal_flash_write, qoraal_flash_erase, \
             start_addr, \
             start_addr + sector_size, \
             sector_size, \

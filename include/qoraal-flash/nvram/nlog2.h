@@ -69,8 +69,8 @@
 #define NLOG_SEVERITY_INFO              (0x06)
 
 
-#define NLOG_SYSTEM                     0
-#define NLOG_DEBUG                      1
+#define NLOG_INFO                       0
+#define NLOG_ASSERT                     1
 
 #define NLOG2_MAX_MESSAGE_SIZE          (2000)
 
@@ -121,8 +121,8 @@ typedef struct NLOG2_LOG_INFO_S {
 } NLOG2_LOG_INFO_T ;
 #pragma pack()
 
-#define NLOG2_LOG_DATA(start, count, sectorsize)        {start, count, sectorsize, 0, {0}}
-#define NLOG2_LOG_DECL(name, start, sectorsize)         NLOG2_T     name = {start, 3, sectorsize, 0, {0}}
+#define NLOG2_LOG_DATA(start, count, sectorsize)        {start, count, sectorsize}
+#define NLOG2_LOG_DECL(name, start, count, sectorsize)  NLOG2_T     name = {start, count, sectorsize}
 
 
 

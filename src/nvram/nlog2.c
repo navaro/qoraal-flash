@@ -32,21 +32,16 @@
  */
 
 #include <string.h>
-#include "qoraal/os.h"
-#include "qoraal/debug.h"
-#include "../config.h"
-#include "qoraal/errordef.h"
+#include "qoraal-flash/qoraal.h"
+#include "qoraal-flash/qoraal.h"
+#include "qoraal-flash/nvram/nlog2.h"
 
 
+#define FLASH_READ(address, len, data)          qoraal_flash_read (address, len, data)
+#define FLASH_WRITE(address, len, data)         qoraal_flash_write (address, len, data)
+#define FLASH_ERASE(start, end)                 qoraal_flash_erase (start, end)
 
-#include "nlog2.h"
-
-
-#define FLASH_READ(address, len, data)          spiflash_read (address, len, data)
-#define FLASH_WRITE(address, len, data)         spiflash_write (address, len, data)
-#define FLASH_ERASE(start, end)                 spiflash_sector_erase (start, end)
-
-#define NLOG2_LOG_RECORD_ALIGN              8
+#define NLOG2_LOG_RECORD_ALIGN                  8
 
 // sector flags
 #define NLOG2_RECORD_FLAGS_EMPTY        0xFFFFFFFF
@@ -64,7 +59,7 @@
 #define RECORD_TYPE_EMPTY               4
 #define RECORD_TYPE_INVALID             5
 
-#define NLOG2_IS_VALID_ADDR(addr)   ((addr >= plog->startaddr) && \
+#define NLOG2_IS_VALID_ADDR(addr)       ((addr >= plog->startaddr) && \
                         (addr <= (plog->startaddr + \
                         (plog->sectorsize * plog->sectorcount) - \
                         sizeof(NLOG2_LOG_HEADER_T))) )
