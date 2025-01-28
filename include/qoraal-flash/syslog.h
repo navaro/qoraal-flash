@@ -68,7 +68,7 @@ typedef struct {
     NLOG2_T  log[SYSLOG_LOG_MAX] ;    
 } SYSLOG_INSTANCE_T ;
 
-#define SYSLOG_LOG_DECL(name, start, info_sector_count, info_sector_size, assert_sector_count, assert_sector_size) \
+#define SYSLOG_INST_DECL(name, start, info_sector_count, info_sector_size, assert_sector_count, assert_sector_size) \
     SYSLOG_INSTANCE_T name = { \
         {  \
             NLOG2_LOG_DATA(start, info_sector_count, info_sector_size), \
@@ -87,8 +87,8 @@ typedef struct {
 extern "C" {
 #endif
 
-    int32_t             syslog_init (void);
-    int32_t             syslog_start (SYSLOG_INSTANCE_T * inst);
+    int32_t             syslog_init (SYSLOG_INSTANCE_T * inst);
+    int32_t             syslog_start (void);
     int32_t             syslog_stop (void) ;
     int32_t             syslog_reset (uint32_t idx) ;
     void                syslog_append (uint32_t idx, uint16_t facillity, uint16_t severity, const char* msg) ;

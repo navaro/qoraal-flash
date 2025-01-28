@@ -16,12 +16,12 @@ static uint8_t        _platform_flash[PLATFORM_FLASH_SIZE]  ;
 
 REGISTRY_INSTANCE_DECL(_system_registry, \
         0, 
-        64*1024, // total size is 64K * 2
+        64*1024,
         24, 
         128, 
         101)
 
-SYSLOG_LOG_DECL(_system_syslog, 64*1024*2, 5, 8*1024, 3, 4*1024)
+SYSLOG_INST_DECL(_system_syslog, 64*1024*2, 5, 8*1024, 3, 4*1024)
 
 
 
@@ -29,8 +29,8 @@ int32_t
 platform_init ()
 {
     platform_flash_erase (0, PLATFORM_FLASH_SIZE-1) ;
-    registry_init () ;
-    syslog_init () ;
+    registry_init (&_system_registry) ;
+    syslog_init (&_system_syslog) ;
     return 0 ;
 }
 
@@ -38,8 +38,8 @@ int32_t
 platform_start ()
 {
     os_thread_sleep (100) ;
-    registry_start (&_system_registry) ;
-    syslog_start (&_system_syslog) ;
+    registry_start () ;
+    syslog_start () ;
     return 0 ;
 }
 

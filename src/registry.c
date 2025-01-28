@@ -111,24 +111,26 @@ scratch_get_value (void)
 }
 
 int32_t
-registry_init(void)
+registry_init(NVOL3_INSTANCE_T * inst)
 {
 #if !defined CFG_REGISTRY_STRSUB_DISABLE
     strsub_install_handler(0, StrsubToken1, &_registry_strsub, registry_strsub_cb) ;
 #endif
 
     keep_registrycmds () ;
+
+    _registry_inst = inst ;
     
     return EOK ;
 }
 
 int32_t
-registry_start(NVOL3_INSTANCE_T * inst)
+registry_start(void)
 {
-    if (_registry_inst) return E_UNEXP ;
+    if (!_registry_inst) return E_UNEXP ;
     int32_t status = 0 ;
 
-    _registry_scratch_value = NVOL3_MALLOC(inst->config->record_size) ;
+    _registry_scratch_value = NVOL3_MALLOC(_registry_inst->config->record_size) ;
     if (!_registry_scratch_value) return E_NOMEM ;
 
     if (os_mutex_create (&_registry_mutex) != EOK) {
@@ -138,8 +140,6 @@ registry_start(NVOL3_INSTANCE_T * inst)
     }
 
     os_mutex_lock (&_registry_mutex) ;
-
-    _registry_inst = inst ;
 
     if (nvol3_validate(_registry_inst) != EOK) {
         DBG_MESSAGE_REGISTRY( DBG_MESSAGE_SEVERITY_REPORT, 

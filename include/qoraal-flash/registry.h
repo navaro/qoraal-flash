@@ -84,8 +84,8 @@ typedef uint16_t STRTAB_KEY_T ;
 extern "C" {
 #endif
 
-    int32_t     registry_init(void) ;
-    int32_t     registry_start(NVOL3_INSTANCE_T * inst) ;
+    int32_t     registry_init(NVOL3_INSTANCE_T * inst) ;
+    int32_t     registry_start(void) ;
     void        registry_stop(void) ;
     int32_t     registry_erase(void) ;
     int32_t     registry_repair (void) ;

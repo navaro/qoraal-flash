@@ -49,7 +49,6 @@ typedef struct _SYSLOG_IT_S {
     SYSLOG_ITERATOR_T it ;
 } _SYSLOG_IT_T ;
 
-static bool _syslog_started = false ;
 
 /**
  * @brief   Starts nvol service.
@@ -60,9 +59,11 @@ static bool _syslog_started = false ;
  *
  * @init
  */
-int32_t syslog_init (void)
+int32_t syslog_init (SYSLOG_INSTANCE_T * inst)
 {
     keep_syslogcmds () ; 
+    _syslog_instance = inst ;
+    _syslog_instance_cnt = 0 ;
 
     return EOK ;
 }
@@ -77,12 +78,9 @@ int32_t syslog_init (void)
  *
  * @init
  */
-int32_t syslog_start (SYSLOG_INSTANCE_T * inst)
+int32_t syslog_start (void)
 {
     int32_t status = 0 ;
-
-    _syslog_instance = inst ;
-    _syslog_instance_cnt = 0 ;
 
     for (_syslog_instance_cnt=0; 
             _syslog_instance_cnt<SYSLOG_LOG_MAX; 
@@ -100,8 +98,6 @@ int32_t syslog_start (SYSLOG_INSTANCE_T * inst)
         return EFAIL ;
     }
     
-    _syslog_started = true ;
-
     return status ? EFAIL : EOK ;
 }
 
@@ -116,10 +112,9 @@ int32_t syslog_start (SYSLOG_INSTANCE_T * inst)
  */
 int32_t syslog_stop (void)
 {
+    _syslog_instance_cnt = 0 ;
     os_mutex_lock (&_syslog_mutex) ;
-    _syslog_started = false ;
     os_mutex_unlock (&_syslog_mutex) ;
-
     os_mutex_delete (&_syslog_mutex) ;
 
     return  EOK ;
@@ -163,9 +158,6 @@ syslog_append (uint32_t idx, uint16_t facillity, uint16_t severity, const char* 
 {
     QORAAL_LOG_MSG_T * syslog = (QORAAL_LOG_MSG_T*) _syslog_log_buffer ;
 
-    if (!_syslog_started) {
-        return ;       
-    }
     if (idx >= _syslog_instance_cnt) {
         return ;
     }
@@ -193,9 +185,6 @@ syslog_vappend_fmtstr (int32_t idx, int16_t facillity, int16_t severity, const c
 {
     QORAAL_LOG_MSG_T * syslog = (QORAAL_LOG_MSG_T*) _syslog_log_buffer ;
 
-    if (!_syslog_started) {
-        return ;       
-    }
     if (idx >= _syslog_instance_cnt) {
         return ;
     }
@@ -240,9 +229,6 @@ syslog_iterator_init (uint32_t idx, uint16_t severity, SYSLOG_ITERATOR_T *it)
 {
     int32_t res ;
 
-    if (!_syslog_started) {
-        return E_UNEXP ;       
-    }
     if (idx >= _syslog_instance_cnt) {
         return E_PARM ;
     }
@@ -259,10 +245,6 @@ syslog_iterator_prev (SYSLOG_ITERATOR_T *it)
 {
     int32_t res ;
 
-    if (!_syslog_started) {
-        return E_UNEXP ;       
-    }
-
     os_mutex_lock (&_syslog_mutex) ;
     res = nlog2_iterator_prev (it) ;
     os_mutex_unlock (&_syslog_mutex) ;
@@ -274,10 +256,6 @@ int32_t
 syslog_iterator_next (SYSLOG_ITERATOR_T *it)
 {
     int32_t res ;
-
-    if (!_syslog_started) {
-        return E_UNEXP ;       
-    }
 
     os_mutex_lock (&_syslog_mutex) ;
     res = nlog2_iterator_prev (it) ;
@@ -291,10 +269,6 @@ int32_t
 syslog_iterator_read (SYSLOG_ITERATOR_T *it, QORAAL_LOG_MSG_T *msg, uint32_t len)
 {
     int32_t res ;
-
-    if (!_syslog_started) {
-        return E_UNEXP ;       
-    }
 
     os_mutex_lock (&_syslog_mutex) ;
     res = nlog2_iterator_read (it, (char*)msg, len) ;
@@ -323,9 +297,6 @@ _it_get(struct QORAAL_LOG_IT_S * it, QORAAL_LOG_MSG_T * msg, uint32_t len)
 QORAAL_LOG_IT_T * 
 syslog_platform_it_create (uint32_t idx)
 {
-    if (!_syslog_started) {
-        return 0 ;       
-    }
     if (idx >= _syslog_instance_cnt) {
         return 0 ;
     }
