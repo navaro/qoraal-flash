@@ -125,7 +125,6 @@ typedef struct NLOG2_LOG_INFO_S {
 #define NLOG2_LOG_DECL(name, start, count, sectorsize)  NLOG2_T     name = {start, count, sectorsize}
 
 
-
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/

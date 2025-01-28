@@ -32,7 +32,6 @@ SVC_SHELL_CMD_DECL("version", qshell_version, "");
 SVC_SHELL_CMD_DECL("hello", qshell_hello, "");
 
 
-
 /*===========================================================================*/
 /* Service Local Variables and Types                                         */
 /*===========================================================================*/
@@ -198,8 +197,10 @@ shell_logger_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const cha
 void
 shell_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg)
 {
-    uint32_t log = SVC_LOGGER_GET_SEVERITY(type) < SVC_LOGGER_SEVERITY_ERROR ?  1 : 0 ;
-    syslog_append (log, SVC_LOGGER_GET_SEVERITY(type), facility, msg) ;
+    syslog_append (0, SVC_LOGGER_GET_SEVERITY(type), facility, msg) ;
+    if (SVC_LOGGER_GET_SEVERITY(type) < SVC_LOGGER_SEVERITY_ERROR) {
+        syslog_append (1, SVC_LOGGER_GET_SEVERITY(type), facility, msg) ;
+    }
 }
 
 

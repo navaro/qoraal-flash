@@ -35,19 +35,13 @@
 #include "qoraal-flash/nvram/nlog2.h"
 
 
-extern void     keep_syslogcmds (void) ;
+extern void    keep_syslogcmds (void) ;
 
 
-static p_mutex_t    _syslog_mutex ;
-
-static char                              _syslog_log_buffer[SYSLOGLOG_MAX_MSG_SIZE + sizeof(QORAAL_LOG_MSG_T)]   ;
-
-#define LOG_NLOG2_MAX   2
-
-NLOG2_T * _log_nlog2[LOG_NLOG2_MAX] = { 0 } ;
-
-//        NLOG2_LOG_DATA(STORAGE_NLOG2_VOL1_START, STORAGE_NLOG2_VOL1_SECTOR_COUNT, STORAGE_NLOG2_VOL1_SECTOR_SIZE),
-//        NLOG2_LOG_DATA(STORAGE_NLOG2_VOL2_START, STORAGE_NLOG2_VOL2_SECTOR_COUNT, STORAGE_NLOG2_VOL2_SECTOR_SIZE),
+static p_mutex_t            _syslog_mutex ;
+static char                 _syslog_log_buffer[SYSLOGLOG_MAX_MSG_SIZE + sizeof(QORAAL_LOG_MSG_T)]   ;
+static SYSLOG_INSTANCE_T *  _syslog_instance = 0 ;
+static uint32_t             _syslog_instance_cnt = 0 ;
 
 
 typedef struct _SYSLOG_IT_S {
@@ -83,29 +77,24 @@ int32_t syslog_init (void)
  *
  * @init
  */
-int32_t syslog_start (NLOG2_T * info_log, NLOG2_T * assert_log)
+int32_t syslog_start (SYSLOG_INSTANCE_T * inst)
 {
-    int i ;
     int32_t status = 0 ;
 
-    if (info_log) {
-        _log_nlog2[0] = info_log ;
-        status = nlog2_init (_log_nlog2[0]) ;
+    _syslog_instance = inst ;
+    _syslog_instance_cnt = 0 ;
+
+    for (_syslog_instance_cnt=0; 
+            _syslog_instance_cnt<SYSLOG_LOG_MAX; 
+            _syslog_instance_cnt++) {
+        status = nlog2_init (&_syslog_instance->log[_syslog_instance_cnt]) ;
         if (status != 0) {
-            return EFAIL ;
+            break ;
             
         }
 
     }
-    if (assert_log) {
-        _log_nlog2[1] = assert_log ;
-        status = nlog2_init (_log_nlog2[1]) ;
-        if (status != 0) {
-            return EFAIL ;
 
-        }
-
-    }
 
     if (os_mutex_create (&_syslog_mutex) != EOK) {
         return EFAIL ;
@@ -148,12 +137,12 @@ int32_t syslog_stop (void)
 int32_t syslog_reset (uint32_t idx)
 {
     int32_t res ;
-    if (idx >= LOG_NLOG2_MAX || !_log_nlog2[idx]) {
+    if (idx >= _syslog_instance_cnt) {
         return EFAIL;
     }
 
     os_mutex_lock (&_syslog_mutex) ;
-    res = nlog2_reset (_log_nlog2[idx]) ;
+    res = nlog2_reset (&_syslog_instance->log[idx]) ;
     os_mutex_unlock (&_syslog_mutex) ;
 
     return res ;
@@ -177,20 +166,20 @@ syslog_append (uint32_t idx, uint16_t facillity, uint16_t severity, const char* 
     if (!_syslog_started) {
         return ;       
     }
-    if (idx >= LOG_NLOG2_MAX || !_log_nlog2[idx]) {
+    if (idx >= _syslog_instance_cnt) {
         return ;
     }
 
 
     os_mutex_lock (&_syslog_mutex) ;
 
-    syslog->id = nlog2_get_id (_log_nlog2[idx]) ;
+    syslog->id = nlog2_get_id (&_syslog_instance->log[idx]) ;
     rtc_localtime (rtc_time(), &syslog->date, &syslog->time) ;
     syslog->facillity = facillity ;
     syslog->severity = severity ;
     strncpy (syslog->msg, msg, SYSLOGLOG_MAX_MSG_SIZE - 1) ;
 
-    nlog2_append (_log_nlog2[idx], 1 << severity, _syslog_log_buffer,
+    nlog2_append (&_syslog_instance->log[idx], 1 << severity, _syslog_log_buffer,
             sizeof(QORAAL_LOG_MSG_T) + strlen(msg) + 1) ;
 
     os_mutex_unlock (&_syslog_mutex) ;
@@ -207,19 +196,19 @@ syslog_vappend_fmtstr (int32_t idx, int16_t facillity, int16_t severity, const c
     if (!_syslog_started) {
         return ;       
     }
-    if (idx >= LOG_NLOG2_MAX || !_log_nlog2[idx]) {
+    if (idx >= _syslog_instance_cnt) {
         return ;
     }
 
 
     os_mutex_lock (&_syslog_mutex) ;
-    syslog->id = nlog2_get_id (_log_nlog2[idx]) ;
+    syslog->id = nlog2_get_id (&_syslog_instance->log[idx]) ;
     rtc_localtime (rtc_time(), &syslog->date, &syslog->time) ;
     syslog->facillity = facillity ;
     syslog->severity = severity ;
     syslog->len = vsnprintf (syslog->msg, SYSLOGLOG_MAX_MSG_SIZE - 1, format, args) ;
 
-    nlog2_append (_log_nlog2[idx], 1 << severity, _syslog_log_buffer,
+    nlog2_append (&_syslog_instance->log[idx], 1 << severity, _syslog_log_buffer,
             sizeof(QORAAL_LOG_MSG_T) + syslog->len + 1) ;
 
     os_mutex_unlock (&_syslog_mutex) ;
@@ -254,12 +243,12 @@ syslog_iterator_init (uint32_t idx, uint16_t severity, SYSLOG_ITERATOR_T *it)
     if (!_syslog_started) {
         return E_UNEXP ;       
     }
-    if (idx >= LOG_NLOG2_MAX || !_log_nlog2[idx]) {
+    if (idx >= _syslog_instance_cnt) {
         return E_PARM ;
     }
 
     os_mutex_lock (&_syslog_mutex) ;
-    res = nlog2_iterator_init (_log_nlog2[idx], ~((1 << severity)-1), it) ;
+    res = nlog2_iterator_init (&_syslog_instance->log[idx], ~((1 << severity)-1), it) ;
     os_mutex_unlock (&_syslog_mutex) ;
 
     return res ;
@@ -337,7 +326,7 @@ syslog_platform_it_create (uint32_t idx)
     if (!_syslog_started) {
         return 0 ;       
     }
-    if (idx >= LOG_NLOG2_MAX || !_log_nlog2[idx]) {
+    if (idx >= _syslog_instance_cnt) {
         return 0 ;
     }
 
@@ -361,8 +350,6 @@ syslog_platform_it_destroy (QORAAL_LOG_IT_T * it)
 {
     qoraal_free (QORAAL_HeapAuxiliary, it) ;
 }
-
-
 
 #endif
 

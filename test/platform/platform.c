@@ -21,15 +21,8 @@ REGISTRY_INSTANCE_DECL(_system_registry, \
         128, 
         101)
 
-NLOG2_LOG_DECL(_info_log,
-        64*1024*2,
-        5,
-        8*1024) ;
+SYSLOG_LOG_DECL(_system_syslog, 64*1024*2, 5, 8*1024, 3, 4*1024)
 
-NLOG2_LOG_DECL(_assert_log,
-        64*1024 + 8*1024*5,
-        3,
-        4*1024) ;
 
 
 int32_t         
@@ -46,7 +39,7 @@ platform_start ()
 {
     os_thread_sleep (100) ;
     registry_start (&_system_registry) ;
-    syslog_start (&_info_log, &_assert_log) ;
+    syslog_start (&_system_syslog) ;
     return 0 ;
 }
 
