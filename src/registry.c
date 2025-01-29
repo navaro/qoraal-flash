@@ -39,9 +39,9 @@
 #include "qoraal-flash/registry.h"
 
 
-NVOL3_INSTANCE_T *  _registry_inst = 0 ;
-static p_mutex_t    _registry_mutex ;
-NVOL3_RECORD_T *    _registry_scratch_value = 0 ;
+REGISTRY_INSTANCE_T *  _registry_inst = 0 ;
+static p_mutex_t        _registry_mutex ;
+NVOL3_RECORD_T *        _registry_scratch_value = 0 ;
 
 #if !defined CFG_REGISTRY_STRSUB_DISABLE
 static int32_t registry_strsub_cb(STRSUB_REPLACE_CB cb, const char * str, size_t len, uint32_t offset, uintptr_t arg) ;
@@ -111,7 +111,7 @@ scratch_get_value (void)
 }
 
 int32_t
-registry_init(NVOL3_INSTANCE_T * inst)
+registry_init(REGISTRY_INSTANCE_T * inst)
 {
 #if !defined CFG_REGISTRY_STRSUB_DISABLE
     strsub_install_handler(0, StrsubToken1, &_registry_strsub, registry_strsub_cb) ;

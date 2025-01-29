@@ -27,6 +27,8 @@
 #include <stdint.h>
 #include <string.h>
 #include "qoraal/qoraal.h"
+#include "qoraal-flash/registry.h"
+#include "qoraal-flash/syslog.h"
 
 /**
  * @brief Structure to define the flash memory interface.
@@ -75,6 +77,9 @@ extern const QORAAL_FLASH_CFG_T *_qoraal_flash_instance;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+int32_t     qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance, NVOL3_INSTANCE_T * registry, SYSLOG_INSTANCE_T * syslog);
+int32_t     qoraal_flash_start_default (void);
 
 int32_t     qoraal_flash_instance_init (const QORAAL_FLASH_CFG_T * instance);
 

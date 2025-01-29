@@ -2,11 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "qoraal/qoraal.h"
+#include "qoraal-flash/qoraal.h"
 #include "qoraal/example/platform.h"
 #include "qoraal/example/console.h"
-#include "qoraal-flash/qoraal.h"
-#include "qoraal-flash/registry.h"
-#include "qoraal-flash/syslog.h"
 #include "system.h"
 
 /*===========================================================================*/
@@ -49,10 +47,9 @@ static void
 main_thread(void* arg)
 {
     platform_start () ;
-    qoraal_svc_start () ;
+    qoraal_start_default () ;
+    qoraal_flash_start_default () ;
 
-    registry_start () ;
-    syslog_start () ;    
 }
 
 /**
@@ -65,13 +62,8 @@ main_init (void)
     static SVC_THREADS_T thd ;
 
     platform_init (32*1024*1024) ;
-    qoraal_instance_init (&_qoraal_cfg) ;
-    qoraal_flash_instance_init (&_qoraal_flash_cfg) ;
-    qoraal_svc_init (_qoraal_services_list) ;
-    
-    registry_init (&_system_registry) ;
-    syslog_init (&_system_syslog) ;
-
+    qoraal_init_default (&_qoraal_cfg, _qoraal_services_list) ;
+    qoraal_flash_init_default (&_qoraal_flash_cfg, &_system_registry, &_system_syslog) ;
 
     svc_threads_create (&thd, 0,
                 4000, OS_THREAD_PRIO_1, main_thread, 0, 0) ;

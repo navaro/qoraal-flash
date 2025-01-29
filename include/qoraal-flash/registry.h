@@ -27,7 +27,6 @@
 
 #include <stdint.h>
 #include <string.h>
-#include "qoraal-flash/qoraal.h"
 #include "qoraal-flash/nvram/nvol3.h"
 
 
@@ -38,6 +37,8 @@
 /*===========================================================================*/
 /* Constants.                                                                */
 /*===========================================================================*/
+
+#define REGISTRY_INSTANCE_T                   NVOL3_INSTANCE_T
 
 
 #define REGISTRY_INST_DECL(name, start_addr, sector_size, key_size, data_size, hashsize)  \
@@ -84,7 +85,7 @@ typedef uint16_t STRTAB_KEY_T ;
 extern "C" {
 #endif
 
-    int32_t     registry_init(NVOL3_INSTANCE_T * inst) ;
+    int32_t     registry_init(REGISTRY_INSTANCE_T * inst) ;
     int32_t     registry_start(void) ;
     void        registry_stop(void) ;
     int32_t     registry_erase(void) ;

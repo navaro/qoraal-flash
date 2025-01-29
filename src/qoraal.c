@@ -26,6 +26,8 @@
 #include <string.h>
 #include "qoraal/qoraal.h"
 #include "qoraal-flash/qoraal.h"
+#include "qoraal-flash/registry.h"
+#include "qoraal-flash/syslog.h"
 
 
 const QORAAL_FLASH_CFG_T *_qoraal_flash_instance = 0 ;
@@ -41,3 +43,30 @@ qoraal_flash_instance_init (const QORAAL_FLASH_CFG_T * instance)
     return EOK;
 }
 
+int32_t
+qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance, 
+                            NVOL3_INSTANCE_T * registry,
+                            SYSLOG_INSTANCE_T * syslog)
+{
+    int32_t res = qoraal_flash_instance_init (instance) ;
+    if (res != EOK) {
+        return res ;
+
+
+    }
+
+    registry_init (registry) ;
+    syslog_init (syslog) ;
+
+
+    return EOK;
+}
+
+int32_t
+qoraal_flash_start_default (void)
+{
+    registry_start () ;
+    syslog_start () ;    
+
+    return EOK;
+}
