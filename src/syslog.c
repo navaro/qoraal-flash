@@ -82,6 +82,10 @@ int32_t syslog_start (void)
 {
     int32_t status = 0 ;
 
+    if (!_syslog_instance) {
+        return E_UNEXP ;
+    }
+
     for (_syslog_instance_cnt=0; 
             _syslog_instance_cnt<SYSLOG_LOG_MAX; 
             _syslog_instance_cnt++) {
@@ -92,7 +96,6 @@ int32_t syslog_start (void)
         }
 
     }
-
 
     if (os_mutex_create (&_syslog_mutex) != EOK) {
         return EFAIL ;
