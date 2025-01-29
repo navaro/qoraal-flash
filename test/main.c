@@ -2,20 +2,33 @@
 #include <stdlib.h>
 #include <string.h>
 #include "qoraal/qoraal.h"
+#include "qoraal/example/platform.h"
+#include "qoraal/example/console.h"
 #include "qoraal-flash/qoraal.h"
-#include "services/services.h"
-#include "platform/platform.h"
+#include "qoraal-flash/registry.h"
+#include "qoraal-flash/syslog.h"
+#include "system.h"
 
 /*===========================================================================*/
 /* Macros and Defines                                                        */
 /*===========================================================================*/
 
+typedef enum  {
+    QORAAL_SERVICE_SHELL = SVC_SERVICES_USER,
+    QORAAL_SERVICE_SYSTEM
+} QORAAL_SERVICES ;
+
+
 /*===========================================================================*/
 /* Service Local Variables and Types                                         */
 /*===========================================================================*/
 
+REGISTRY_INST_DECL(_system_registry, 0, 64*1024, 24, 128, 101)
+SYSLOG_INST_DECL(_system_syslog, 64*1024*2, 5, 8*1024, 3, 4*1024)
+
 SVC_SERVICE_LIST_START(_qoraal_services_list)
-SVC_SERVICE_RUN_DECL("shell",  shell_service_run, shell_service_ctrl, 0, 6000, OS_THREAD_PRIO_7, QORAAL_SERVICE_SHELL, SVC_SERVICE_FLAGS_AUTOSTART)
+SVC_SERVICE_RUN_DECL("shell",  console_service_run, console_service_ctrl, 0, 6000, OS_THREAD_PRIO_7, QORAAL_SERVICE_SHELL, SVC_SERVICE_FLAGS_AUTOSTART)
+SVC_SERVICE_RUN_DECL("system",  system_service_run, system_service_ctrl, 0, 6000, OS_THREAD_PRIO_7, QORAAL_SERVICE_SYSTEM, SVC_SERVICE_FLAGS_AUTOSTART)
 SVC_SERVICE_LIST_END()
 
 static const QORAAL_CFG_T           _qoraal_cfg = { .malloc = platform_malloc, .free = platform_free, .debug_print = platform_print, .debug_assert = platform_assert, .current_time = platform_current_time, .wdt_kick = platform_wdt_kick};
@@ -37,6 +50,9 @@ main_thread(void* arg)
 {
     platform_start () ;
     qoraal_svc_start () ;
+
+    registry_start () ;
+    syslog_start () ;    
 }
 
 /**
@@ -48,10 +64,14 @@ main_init (void)
 {
     static SVC_THREADS_T thd ;
 
-    platform_init () ;
+    platform_init (32*1024*1024) ;
     qoraal_instance_init (&_qoraal_cfg) ;
     qoraal_flash_instance_init (&_qoraal_flash_cfg) ;
     qoraal_svc_init (_qoraal_services_list) ;
+    
+    registry_init (&_system_registry) ;
+    syslog_init (&_system_syslog) ;
+
 
     svc_threads_create (&thd, 0,
                 4000, OS_THREAD_PRIO_1, main_thread, 0, 0) ;
@@ -86,8 +106,8 @@ int main( void )
     /*
      * For the demo, we wait for the shell to be exited with the "exit" command.
      */
-    platform_wait_for_exit (QORAAL_SERVICE_SHELL) ;    
-
+    console_wait_for_exit () ;
+    platform_stop () ;
     // for( ;; ) os_thread_sleep (32768);
 }
 

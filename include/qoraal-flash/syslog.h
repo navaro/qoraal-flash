@@ -93,7 +93,7 @@ extern "C" {
     int32_t             syslog_reset (uint32_t idx) ;
     void                syslog_append (uint32_t idx, uint16_t facillity, uint16_t severity, const char* msg) ;
     void                syslog_append_fmtstr (uint32_t idx, uint16_t facillity, uint16_t severity, const char* format, ...) ;
-    void                syslog_vappend_fmtstr (int32_t idx, int16_t facillity,  int16_t severity, const char* format, va_list   args) ;
+    void                syslog_vappend_fmtstr (int32_t idx, int16_t facillity, int16_t severity, const char* format, va_list   args) ;
 
     int32_t             syslog_iterator_init (uint32_t idx, uint16_t severity, SYSLOG_ITERATOR_T *it) ;
     int32_t             syslog_iterator_prev (SYSLOG_ITERATOR_T *it) ;

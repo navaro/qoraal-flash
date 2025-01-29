@@ -17,23 +17,14 @@
  *  This file is part of CORAL Connect (https://navaro.nl)
  */
 
-
-#ifndef __MAIN_H__
-#define __MAIN_H__
+#ifndef __SYSTEM_H__
+#define __SYSTEM_H__
 
 #include "qoraal/svc/svc_services.h"
-
 
 /*===========================================================================*/
 /* Client pre-compile time settings.                                         */
 /*===========================================================================*/
-
-#define DBG_MESSAGE_SERVICES(severity, fmt_str, ...)   DBG_MESSAGE_T_LOG (SVC_LOGGER_TYPE(severity,0), 0, fmt_str, ##__VA_ARGS__)
-
-
-typedef enum  {
-    QORAAL_SERVICE_SHELL = SVC_SERVICES_USER,
-} QORAAL_SERVICES ;
 
 /*===========================================================================*/
 /* Data structures and types.                                                */
@@ -46,11 +37,11 @@ typedef enum  {
 extern "C" {
 #endif
 
-    extern int32_t      shell_service_ctrl (uint32_t code, uintptr_t arg) ;
-    extern int32_t      shell_service_run (uintptr_t arg) ;
+    extern int32_t      system_service_ctrl (uint32_t code, uintptr_t arg) ;
+    extern int32_t      system_service_run (uintptr_t arg) ;
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __MAIN_H__ */
+#endif /* __SERVICES_H__ */

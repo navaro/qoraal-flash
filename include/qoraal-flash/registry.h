@@ -31,7 +31,7 @@
 #include "qoraal-flash/nvram/nvol3.h"
 
 
-#define DBG_MESSAGE_REGISTRY(severity, fmt_str, ...)        DBG_MESSAGE_T_REPORT (SVC_LOGGER_TYPE(severity,0), 0, fmt_str, ##__VA_ARGS__)
+#define DBG_MESSAGE_REGISTRY(severity, fmt_str, ...)        DBG_MESSAGE_T_LOG (SVC_LOGGER_TYPE(severity,0), 0, fmt_str, ##__VA_ARGS__)
 #define DBG_ASSERT_REGISTRY                                 DBG_ASSERT_T
 #define DBG_CHECK_REGISTRY                                  DBG_ASSERT_T
 
@@ -40,7 +40,7 @@
 /*===========================================================================*/
 
 
-#define REGISTRY_INSTANCE_DECL(name, start_addr, sector_size, key_size, data_size, hashsize)  \
+#define REGISTRY_INST_DECL(name, start_addr, sector_size, key_size, data_size, hashsize)  \
         NVOL3_INSTANCE_DECL(name, \
             qoraal_flash_read, qoraal_flash_write, qoraal_flash_erase, \
             start_addr, \

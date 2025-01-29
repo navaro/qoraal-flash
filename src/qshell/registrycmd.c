@@ -110,8 +110,8 @@ qshell_cmd_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
 
     }
 
-    res = registry_value_get (argv[1], value, &type, REGISTRY_VALUE_LENGT_MAX) ;
-    if (res >= 0 ) {
+    res = registry_value_length (argv[1]) ;
+    if (res > 0 ) {
         svc_shell_print (pif, SVC_SHELL_OUT_STD,
             "registry setting %s exists" SVC_SHELL_NEWLINE, argv[1]) ;
 
@@ -136,7 +136,6 @@ qshell_cmd_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
             type = REGISTRY_TYPE_INT ;
         } else {
             type = REGISTRY_TYPE_ENUM ;
- 
         }
 
     }

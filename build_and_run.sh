@@ -3,5 +3,5 @@ cd build
 cmake .. -DBUILD_REGTEST=ON 
 cmake --build .
 cd ..
-./build/test/regtest
+./build/test/flashtest
 
