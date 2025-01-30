@@ -80,6 +80,7 @@ extern "C" {
 
 int32_t     qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance, NVOL3_INSTANCE_T * registry, SYSLOG_INSTANCE_T * syslog);
 int32_t     qoraal_flash_start_default (void);
+int32_t     qoraal_flash_stop_default (void);
 
 int32_t     qoraal_flash_instance_init (const QORAAL_FLASH_CFG_T * instance);
 

@@ -70,3 +70,12 @@ qoraal_flash_start_default (void)
 
     return EOK;
 }
+
+int32_t
+qoraal_flash_stop_default (void)
+{
+    registry_stop () ;
+    syslog_stop () ;    
+
+    return EOK;
+}

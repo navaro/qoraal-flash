@@ -163,9 +163,9 @@ registry_stop(void)
     os_mutex_lock (&_registry_mutex) ;
     nvol3_unload (_registry_inst) ;
     _registry_inst = 0 ;
+    os_mutex_unlock (&_registry_mutex) ;
     NVOL3_FREE (_registry_scratch_value) ;
     _registry_scratch_value = 0 ;
-    os_mutex_unlock (&_registry_mutex) ;
     os_mutex_delete (&_registry_mutex) ;
 }
 
