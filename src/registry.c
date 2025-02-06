@@ -288,7 +288,7 @@ registry_value_get(REGISTRY_KEY_T id, char* value, uint16_t* type, unsigned int 
     }
     else if (res == E_NOTFOUND) {
         DBG_MESSAGE_REGISTRY( DBG_MESSAGE_SEVERITY_INFO,
-                "REG   : : registry id %s not found!", id)
+                "REG   : : registry id '%s' not found!", id)
 
     }
 
