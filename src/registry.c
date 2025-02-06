@@ -80,7 +80,7 @@ scratch_get (void)
 char *
 scratch_get_key (void) 
 {
-    return _registry_scratch_value->key_and_data ;
+    return (char*)_registry_scratch_value->key_and_data ;
 }
 
 uint16_t
@@ -100,7 +100,7 @@ scratch_key_type_len (void)
 int32_t
 scratch_value_len (void) 
 {
-    return _registry_inst->config->record_size + - scratch_key_type_len() - sizeof(NVOL3_RECORD_HEAD_T) ;
+    return _registry_inst->config->record_size - scratch_key_type_len() - sizeof(NVOL3_RECORD_HEAD_T) ;
 }
 
 char *
@@ -287,7 +287,7 @@ registry_value_get(REGISTRY_KEY_T id, char* value, uint16_t* type, unsigned int 
 
     }
     else if (res == E_NOTFOUND) {
-        DBG_MESSAGE_REGISTRY( DBG_MESSAGE_SEVERITY_LOG,
+        DBG_MESSAGE_REGISTRY( DBG_MESSAGE_SEVERITY_INFO,
                 "REG   : : registry id %s not found!", id)
 
     }

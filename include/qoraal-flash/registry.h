@@ -38,12 +38,10 @@
 /* Constants.                                                                */
 /*===========================================================================*/
 
-#define REGISTRY_INSTANCE_T                   NVOL3_INSTANCE_T
-
+typedef NVOL3_INSTANCE_T REGISTRY_INSTANCE_T;
 
 #define REGISTRY_INST_DECL(name, start_addr, sector_size, key_size, data_size, hashsize)  \
         NVOL3_INSTANCE_DECL(name, \
-            qoraal_flash_read, qoraal_flash_write, qoraal_flash_erase, \
             start_addr, \
             start_addr + sector_size, \
             sector_size, \

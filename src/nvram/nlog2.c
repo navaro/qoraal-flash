@@ -106,7 +106,7 @@ sector_erase (NLOG2_T * plog, uint32_t sector_nr)
     }
 
     start = plog->startaddr + plog->sectorsize * sector_nr ;
-    return FLASH_ERASE (start, start + plog->sectorsize) ;
+    return FLASH_ERASE (start, start + plog->sectorsize - 1) ;
 }
 
 static uint32_t

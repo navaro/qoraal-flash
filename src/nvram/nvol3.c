@@ -39,10 +39,9 @@
 /*===========================================================================*/
 /* Module macros.                                                            */
 /*===========================================================================*/
-
-#define FLASH_READ(flash, address, len, data)   flash.read (address, len, data)
-#define FLASH_WRITE(flash, address, len, data)  flash.write (address, len, data)
-#define FLASH_ERASE(flash, start, end)          flash.erase (start, end)
+#define FLASH_READ(address, len, data)          qoraal_flash_read (address, len, data)
+#define FLASH_WRITE(address, len, data)         qoraal_flash_write (address, len, data)
+#define FLASH_ERASE(start, end)                 qoraal_flash_erase (start, end)
 
 /*===========================================================================*/
 /* Module data structures and types.                                         */
@@ -126,7 +125,7 @@ nvol3_load (NVOL3_INSTANCE_T* instance)
             instance->dict = 0 ;
 
         }
-        instance->dict = dictionary_init(0, config->keyspec,
+        instance->dict = dictionary_init(QORAAL_HeapAuxiliary, config->keyspec,
                 config->hashsize) ;
 
 
@@ -1049,7 +1048,7 @@ get_sector_version (const NVOL3_CONFIG_T * config, uint32_t sector_addr,
     if (flags) *flags = 0 ;
 
     /* read sector record */
-    if (FLASH_READ (config->flash, sector_addr, sizeof (NVOL3_SECTOR_RECORD_T),
+    if (FLASH_READ (sector_addr, sizeof (NVOL3_SECTOR_RECORD_T),
                 (uint8_t*)&sector) != EOK) {
         return NVOL3_SECTOR_VERSION_0 ;
     }
@@ -1070,7 +1069,7 @@ set_sector_flags (const NVOL3_CONFIG_T * config, uint32_t sector_addr,
     sector.flags = flags;
     sector.version =  ~((uint32_t)config->version)  ;
 
-    int32_t res = FLASH_WRITE(config->flash, (uint32_t)sector_addr,
+    int32_t res = FLASH_WRITE((uint32_t)sector_addr,
                         sizeof(NVOL3_SECTOR_RECORD_T), (uint8_t*)&sector)  ;
 
     uint32_t sector_flags;
@@ -1094,7 +1093,7 @@ static int32_t
 erase_sector (const NVOL3_CONFIG_T * config, uint32_t sector_addr,
                 uint32_t sector_size)
 {
-    uint32_t status = FLASH_ERASE (config->flash, sector_addr, sector_addr + sector_size) ;
+    uint32_t status = FLASH_ERASE (sector_addr, sector_addr + sector_size - 1) ;
     return status ;
 }
 
@@ -1111,7 +1110,7 @@ read_variable_record_head_sector (NVOL3_INSTANCE_T * instance,
                 "read_variable_record_head idx %d", idx) ;
 
     offset = NVOL3_PAGE_SIZE + config->record_size * idx ;
-    status = FLASH_READ (config->flash, sector_addr + offset,
+    status = FLASH_READ (sector_addr + offset,
                     sizeof (NVOL3_RECORD_HEAD_T), (uint8_t*)head) ;
     if (status != EOK) {
           DBG_MESSAGE_NVOL3 (DBG_MESSAGE_SEVERITY_ERROR,
@@ -1153,7 +1152,7 @@ read_variable_record (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T *rec,
                 "NVOL3 :E: read_variable_record idx %d", idx) ;
 
     offset = NVOL3_PAGE_SIZE + config->record_size * idx ;
-    status = FLASH_READ (config->flash, instance->sector + offset,
+    status = FLASH_READ (instance->sector + offset,
                     sizeof (NVOL3_RECORD_HEAD_T), (uint8_t*)rec) ;
     if (status != EOK) {
           DBG_MESSAGE_NVOL3 (DBG_MESSAGE_SEVERITY_ERROR,
@@ -1175,7 +1174,7 @@ read_variable_record (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T *rec,
         offset += sizeof (NVOL3_RECORD_HEAD_T) ;
         if (bytes == 0) bytes = rec->head.length ;
         else if (bytes > rec->head.length) bytes = rec->head.length ;
-        status = FLASH_READ (config->flash, instance->sector + offset, bytes,
+        status = FLASH_READ (instance->sector + offset, bytes,
                         (uint8_t*)rec->key_and_data) ;
     }
 
@@ -1200,7 +1199,7 @@ write_variable_record (NVOL3_INSTANCE_T * instance,  uint32_t sector_addr,
     }
 
     offset = NVOL3_PAGE_SIZE + config->record_size * idx  ;
-    status = FLASH_WRITE (config->flash, sector_addr + offset,
+    status = FLASH_WRITE (sector_addr + offset,
                 rec->head.length + sizeof(NVOL3_RECORD_HEAD_T), (uint8_t*)rec) ;
 
     return status ;
@@ -1219,7 +1218,7 @@ set_variable_record_flags (NVOL3_INSTANCE_T * instance, uint32_t sector_addr,
                 idx, max_records(instance)) ;
 
     offset = NVOL3_PAGE_SIZE + config->record_size * idx  ;
-    status = FLASH_WRITE (config->flash, sector_addr + offset,
+    status = FLASH_WRITE (sector_addr + offset,
                     (uint32_t)sizeof(uint16_t), (uint8_t*)&flags) ;
 
     return status ;

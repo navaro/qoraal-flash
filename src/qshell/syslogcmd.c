@@ -12,8 +12,6 @@ static int32_t _log (SVC_SHELL_IF_T * pif, uint32_t log, uint32_t severity, uint
     QORAAL_LOG_MSG_T *  msg = qoraal_malloc(QORAAL_HeapAuxiliary, LOG_MSG_SIZE) ;
     QORAAL_LOG_IT_T * it = 0 ;
 
-    int32_t res = 0 ;
-
     it = syslog_platform_it_create (log) ;
 
     svc_shell_print (pif, SVC_SHELL_OUT_STD,

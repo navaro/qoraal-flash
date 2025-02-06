@@ -7,10 +7,13 @@ SVC_SHELL_CMD_DECL( "reg", qshell_cmd_reg,  "[entry] [value]");
 SVC_SHELL_CMD_DECL( "regadd", qshell_cmd_regadd,  "<entry> <value> [str/int/enum_type]");
 SVC_SHELL_CMD_DECL( "regdel", qshell_cmd_regdel,  "<entry>");
 SVC_SHELL_CMD_DECL( "regstats", qshell_cmd_regstats,  "");
+SVC_SHELL_CMD_DECL( "regrepair", qshell_regrepair,  "");
+SVC_SHELL_CMD_DECL( "regerase", qshell_regerase,  "");
 
-#define REGISTRY_VALUE_LENGT_MAX            180
 
-void
+#define REGISTRY_VALUE_MAX				192
+
+static void
 reg_print (SVC_SHELL_IF_T * pif, REGISTRY_KEY_T key, char* value, uint16_t type, int length)
 {
     char tmp[40] ;
@@ -30,7 +33,7 @@ reg_print (SVC_SHELL_IF_T * pif, REGISTRY_KEY_T key, char* value, uint16_t type,
 
 }
 
-uint32_t
+static uint32_t
 reg_show(SVC_SHELL_IF_T * pif, const char * search, char * value, uint32_t len)
 {
     REGISTRY_KEY_T key ;
@@ -60,23 +63,23 @@ int32_t qshell_cmd_reg (SVC_SHELL_IF_T * pif, char** argv, int argc)
     //REGISTRY_KEY_T key ;
     uint16_t type ;
     //int32_t intval = 0 ;
-    char value[REGISTRY_VALUE_LENGT_MAX] ;
+    char value[REGISTRY_VALUE_MAX] ;
     int32_t res = 0 ;
 
     if (argc == 1) {
-        res = reg_show (pif, 0, value, REGISTRY_VALUE_LENGT_MAX) ;
+        res = reg_show (pif, 0, value, REGISTRY_VALUE_MAX) ;
         svc_shell_print (pif, SVC_SHELL_OUT_STD,
                 SVC_SHELL_NEWLINE "        %d entries found." SVC_SHELL_NEWLINE, res) ;
 
     }
     else if (argc == 2) {
 
-        res = registry_value_get (argv[1], value, &type, REGISTRY_VALUE_LENGT_MAX) ;
+        res = registry_value_get (argv[1], value, &type, REGISTRY_VALUE_MAX) ;
         if (res > 0) {
-            reg_print (pif, argv[1], value, type, REGISTRY_VALUE_LENGT_MAX) ;
+            reg_print (pif, argv[1], value, type, REGISTRY_VALUE_MAX) ;
 
         } else {
-            res = reg_show (pif, argv[1], value, REGISTRY_VALUE_LENGT_MAX) ;
+            res = reg_show (pif, argv[1], value, REGISTRY_VALUE_MAX) ;
             svc_shell_print (pif, SVC_SHELL_OUT_STD,
                     SVC_SHELL_NEWLINE "        %d entries found." SVC_SHELL_NEWLINE, res) ;
 
@@ -99,9 +102,7 @@ int32_t qshell_cmd_reg (SVC_SHELL_IF_T * pif, char** argv, int argc)
 int32_t
 qshell_cmd_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
-    //REGISTRY_KEY_T key ;
     uint16_t type ;
-    char value[REGISTRY_VALUE_LENGT_MAX] ;
     int32_t res = SVC_SHELL_CMD_E_OK ;
     int32_t val ;
 
@@ -178,6 +179,23 @@ int32_t qshell_cmd_regdel(SVC_SHELL_IF_T * pif, char** argv, int argc)
     return SVC_SHELL_CMD_E_OK ;
 }
 
+int32_t qshell_regerase (SVC_SHELL_IF_T * pif, char** argv, int argc)
+{
+    int32_t status = registry_erase () ;
+    svc_shell_print (pif, SVC_SHELL_OUT_STD, "%s\r\n",
+            status == EOK ? "OK" : "ERR") ;
+
+    return SVC_SHELL_CMD_E_OK ;
+}
+
+int32_t qshell_regrepair (SVC_SHELL_IF_T * pif, char** argv, int argc)
+{
+    int32_t status = registry_repair () ;
+    svc_shell_print (pif, SVC_SHELL_OUT_STD, "%s\r\n",
+            status == EOK ? "OK" : "ERR") ;
+
+    return SVC_SHELL_CMD_E_OK ;
+}
 
 int32_t qshell_cmd_regstats (SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
@@ -193,4 +211,6 @@ keep_registrycmds(void)
     (void)qshell_cmd_regadd ;
     (void)qshell_cmd_regdel ;
     (void)qshell_cmd_regstats ;
+    (void)qshell_regerase ;
+    (void)qshell_regrepair ;
 }

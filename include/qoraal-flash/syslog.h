@@ -69,7 +69,7 @@ typedef struct {
 } SYSLOG_INSTANCE_T ;
 
 #define SYSLOG_INST_DECL(name, start, info_sector_count, info_sector_size, assert_sector_count, assert_sector_size) \
-    SYSLOG_INSTANCE_T name = { \
+    static SYSLOG_INSTANCE_T name = { \
         {  \
             NLOG2_LOG_DATA(start, info_sector_count, info_sector_size), \
             NLOG2_LOG_DATA(start+info_sector_count*info_sector_size, assert_sector_count, assert_sector_size) \

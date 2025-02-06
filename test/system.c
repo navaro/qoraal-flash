@@ -6,6 +6,7 @@
 #include "qoraal/svc/svc_services.h"
 #include "qoraal/svc/svc_tasks.h"
 #include "qoraal/svc/svc_shell.h"
+#include "qoraal-flash/registry.h"
 #include "qoraal-flash/syslog.h"
 
 
@@ -33,10 +34,12 @@ static void     system_periodic_cb (SVC_TASKS_T *task, uintptr_t parm, uint32_t 
 static void     system_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg) ;
 
 static int32_t  qshell_cmd_status (SVC_SHELL_IF_T * pif, char** argv, int argc) ;
+static int32_t  qshell_cmd_regtest (SVC_SHELL_IF_T * pif, char** argv, int argc) ;
 
 
 SVC_SHELL_CMD_LIST_START(system, 0)
 SVC_SHELL_CMD_LIST( "status", qshell_cmd_status,  "")
+SVC_SHELL_CMD_LIST( "regtest", qshell_cmd_regtest,  "[repeat] [entries]")
 SVC_SHELL_CMD_LIST_END()
 
 static LOGGER_CHANNEL_T     _system_log_channel = { .fp = system_syslog_cb, .user = (void*)0, .filter = { { .mask = SVC_LOGGER_MASK, .type = SVC_LOGGER_SEVERITY_LOG | SVC_LOGGER_FLAGS_NO_TIMESTAMP }, {0,0} } };
@@ -168,6 +171,95 @@ qshell_cmd_status (SVC_SHELL_IF_T * pif, char** argv, int argc)
             SVC_TASK_TICKS2MS(svc_task_expire(&_system_periodic_task))/1000) ;
     
     return res ;
+}
+
+
+int32_t
+qshell_cmd_regtest (SVC_SHELL_IF_T * pif, char** argv, int argc)
+{
+#define ___test___          "regtest"
+    unsigned int entries = 10 ;
+    unsigned int repeat = 100 ;
+    unsigned int i ;
+    unsigned int intval = qoraal_rand () ;
+    int32_t test  ;
+    char key[16] ;
+    char value[32] ;
+    char value2[32] ;
+    int32_t res ;
+
+
+    if (argc > 1) {
+        sscanf(argv[1], "%d", &repeat) ;
+
+    }
+    if (argc > 2) {
+        sscanf(argv[2], "%d", &entries) ;
+
+    }
+
+    svc_shell_print(pif, SVC_SHELL_OUT_STD,
+              "registry testing %d times...\r\n", repeat) ;
+
+    for (i=0; i<repeat; i++) {
+
+        // test string value
+    	snprintf(key, sizeof(key), "%03u_str_%s", intval%entries, ___test___) ;
+    	snprintf(value, sizeof(value), "%s -- %u -- %u", ___test___, intval%entries, intval) ;
+        res = registry_string_set (key, value) ;
+        if (res < 0) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "string set return %d\r\n", res) ;
+            break ;
+
+        }
+        res = registry_string_get (key, value2, sizeof(value2)) ;
+        if (res < 0) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "string get return %d\r\n", res) ;
+            break ;
+
+        }
+        if (strcmp(value, value2)) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "string get %s expected %s\r\n", value2, value2) ;
+            break ;
+
+        }
+
+        // test int32 value
+    	snprintf(key, sizeof(key), "%03u_int32_%s", intval%entries, ___test___) ;
+        res = registry_int32_set (key, intval) ;
+        if (res < 0) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "int32 set return %d\r\n", res) ;
+            break ;
+
+        }
+        res = registry_int32_get (key, &test) ;
+        if (res < 0) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "int32 get return %d\r\n", res) ;
+            break ;
+
+        }
+        if (test != intval) {
+            svc_shell_print(pif, SVC_SHELL_OUT_STD,
+                     "int32 get %d expected %d\r\n", test, intval) ;
+            break ;
+
+        }
+
+        intval++ ;
+
+    }
+
+    svc_shell_print(pif, SVC_SHELL_OUT_STD,
+              "done repeated %u\r\n", i) ;
+
+
+    return SVC_SHELL_CMD_E_OK ;
+
 }
 
 

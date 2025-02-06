@@ -45,7 +45,7 @@ typedef struct {
      * @param data Pointer to a buffer where the read data will be stored.
      * @return 0 on success, or a negative error code on failure.
      */
-    int (*flash_read)(uint32_t addr, uint32_t len, uint8_t *data);
+	int32_t (*flash_read)(uint32_t addr, uint32_t len, uint8_t *data);
 
     /**
      * @brief Write data to flash memory.
@@ -55,7 +55,7 @@ typedef struct {
      * @param data Pointer to the data to be written.
      * @return 0 on success, or a negative error code on failure.
      */
-    int (*flash_write)(uint32_t addr, uint32_t len, const uint8_t *data);
+	int32_t (*flash_write)(uint32_t addr, uint32_t len, const uint8_t *data);
 
     /**
      * @brief Erase a region of flash memory.
@@ -64,7 +64,7 @@ typedef struct {
      * @param addr_end The ending address of the region to erase.
      * @return 0 on success, or a negative error code on failure.
      */
-    int (*flash_erase)(uint32_t addr_start, uint32_t addr_end);
+	int32_t (*flash_erase)(uint32_t addr_start, uint32_t addr_end);
 
 } QORAAL_FLASH_CFG_T;
 
