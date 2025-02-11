@@ -183,9 +183,9 @@ qshell_cmd_regtest (SVC_SHELL_IF_T * pif, char** argv, int argc)
     unsigned int i ;
     unsigned int intval = qoraal_rand () ;
     int32_t test  ;
-    char key[16] ;
-    char value[32] ;
-    char value2[32] ;
+    char key[32] ;
+    char value[64] ;
+    char value2[64] ;
     int32_t res ;
 
 
