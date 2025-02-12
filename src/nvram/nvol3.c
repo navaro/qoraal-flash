@@ -763,6 +763,7 @@ nvol3_callback_tallie (struct NVOL3_INSTANCE_S * inst,
 void
 nvol3_entry_log_status (NVOL3_INSTANCE_T* instance, uint32_t verbose)
 {
+#ifndef NDEBUG
     const NVOL3_CONFIG_T    *   config = instance->config ;
     DBG_MESSAGE_NVOL3 (DBG_MESSAGE_SEVERITY_INFO,
             "NVOL3 : : '%s' %d / %d records loaded",
@@ -838,7 +839,7 @@ nvol3_entry_log_status (NVOL3_INSTANCE_T* instance, uint32_t verbose)
                 max, empty, used) ;
 
     }
-
+#endif
 }
 
 
