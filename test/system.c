@@ -6,6 +6,7 @@
 #include "qoraal/svc/svc_services.h"
 #include "qoraal/svc/svc_tasks.h"
 #include "qoraal/svc/svc_shell.h"
+#include "qoraal/svc/svc_logger.h"
 #include "qoraal-flash/registry.h"
 #include "qoraal-flash/syslog.h"
 
@@ -31,7 +32,7 @@ static SVC_TASKS_DECL       (_system_periodic_task) ;
 
 static void     system_startup_cb (SVC_TASKS_T *task, uintptr_t parm, uint32_t reason) ;
 static void     system_periodic_cb (SVC_TASKS_T *task, uintptr_t parm, uint32_t reason) ;
-static void     system_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg) ;
+static void     system_syslog_cb (void* channel, LOGGER_TYPE_T type, uint8_t facility, const char* msg) ;
 
 static int32_t  qshell_cmd_status (SVC_SHELL_IF_T * pif, char** argv, int argc) ;
 static int32_t  qshell_cmd_regtest (SVC_SHELL_IF_T * pif, char** argv, int argc) ;
@@ -273,7 +274,7 @@ qshell_cmd_regtest (SVC_SHELL_IF_T * pif, char** argv, int argc)
  * @param[in]   msg         The log message to display.
  */
 void
-system_syslog_cb (void* channel, LOGGERT_TYPE_T type, uint8_t facility, const char* msg)
+system_syslog_cb (void* channel, LOGGER_TYPE_T type, uint8_t facility, const char* msg)
 {
     syslog_append (SYSLOG_INFO_LOG, facility, SVC_LOGGER_GET_SEVERITY(type), msg) ;
     if (SVC_LOGGER_GET_SEVERITY(type) < SVC_LOGGER_SEVERITY_ERROR) {
