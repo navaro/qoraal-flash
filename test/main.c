@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "qoraal/qoraal.h"
+#include "qoraal/platform.h"
 #include "qoraal-flash/qoraal.h"
-#include "qoraal/example/platform.h"
-#include "qoraal/example/console.h"
+
+#include "qoraal/qshell/console.h"
 #include "system.h"
 
 /*===========================================================================*/

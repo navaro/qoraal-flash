@@ -1,6 +1,7 @@
 # Collect all test source files
 set(TEST_SRCS
     main.c
+    platform.c
     system.c
 )
 
@@ -12,6 +13,7 @@ target_compile_definitions(qoraal-flash PRIVATE CFG_OS_POSIX)
 
 # Add the executable target
 add_executable(flashtest ${TEST_SRCS})
+target_compile_definitions(flashtest PRIVATE CFG_OS_POSIX)
 target_compile_options(flashtest PRIVATE -O0 -g)
 # Link the qoraal library and pthread
 if(WIN32)
