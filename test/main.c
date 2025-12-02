@@ -30,7 +30,7 @@ SVC_SERVICE_RUN_DECL("shell",  console_service_run, console_service_ctrl, 0, 600
 SVC_SERVICE_RUN_DECL("system",  system_service_run, system_service_ctrl, 0, 6000, OS_THREAD_PRIO_7, QORAAL_SERVICE_SYSTEM, SVC_SERVICE_FLAGS_AUTOSTART)
 SVC_SERVICE_LIST_END()
 
-static const QORAAL_CFG_T           _qoraal_cfg = { .malloc = platform_malloc, .free = platform_free, .debug_print = platform_print, .debug_assert = platform_assert, .current_time = platform_current_time, .wdt_kick = platform_wdt_kick};
+static const QORAAL_CFG_T           _qoraal_cfg = { .malloc = platform_malloc, .free = platform_free, .debug_print = platform_print, .debug_getch = platform_getch, .debug_assert = platform_assert, .current_time = platform_current_time, .wdt_kick = platform_wdt_kick};
 static const QORAAL_FLASH_CFG_T     _qoraal_flash_cfg = { .flash_read = platform_flash_read, .flash_write = platform_flash_write, .flash_erase = platform_flash_erase};
 
 /*===========================================================================*/
