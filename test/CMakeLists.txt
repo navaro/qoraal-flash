@@ -5,23 +5,22 @@ set(TEST_SRCS
     system.c
 )
 
+add_executable(flashtest ${TEST_SRCS})
+
 # set options for compiling the qoraal library
 target_compile_options(qoraal PRIVATE -O0 -g)
 target_compile_definitions(qoraal PRIVATE CFG_OS_POSIX)
 target_compile_options(qoraal-flash PRIVATE -O0 -g)
 target_compile_definitions(qoraal-flash PRIVATE CFG_OS_POSIX)
-
-# Add the executable target
-add_executable(flashtest ${TEST_SRCS})
-target_compile_definitions(flashtest PRIVATE CFG_OS_POSIX)
 target_compile_options(flashtest PRIVATE -O0 -g)
+target_compile_definitions(flashtest PRIVATE CFG_OS_POSIX)
+
 # Link the qoraal library and pthread
 if(WIN32)
     target_link_libraries(flashtest qoraal qoraal-flash pthread ws2_32)
 else()
     target_link_libraries(flashtest qoraal qoraal-flash pthread)
 endif()
-
 
 
 # Generate a map file
