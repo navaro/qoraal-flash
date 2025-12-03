@@ -1,0 +1,22 @@
+ifeq ($(OS),Windows_NT)
+	CMAKE = cmake .. -DBUILD_FLASH_TESTS=ON -G "MinGW Makefiles"
+else
+	CMAKE = cmake .. -DBUILD_FLASH_TESTS=ON
+endif
+MKDIR = mkdir -p build
+EXECUTABLE = ./build/test/flashtest
+RM = rm -rf
+
+.PHONY: all build run clean
+
+all: build run
+
+build:
+	$(MKDIR)
+	cd build && $(CMAKE) && cmake --build .
+
+run:
+	cd $(CURDIR) && $(EXECUTABLE)
+
+clean:
+	$(RM) build

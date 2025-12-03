@@ -22,9 +22,9 @@ include_directories("${qoraal_SOURCE_DIR}/include")
 add_subdirectory(src)
 
 # Option to build tests
-option(BUILD_TESTS "Build the test directory" OFF)
+option(BUILD_FLASH_TESTS "Build the test directory" OFF)
 
-if(BUILD_TESTS)
+if(BUILD_FLASH_TESTS)
     add_subdirectory(test)
 endif()
 
