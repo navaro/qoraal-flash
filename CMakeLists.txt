@@ -23,7 +23,6 @@ add_subdirectory(src)
 
 # Option to build tests
 option(BUILD_FLASH_TESTS "Build the test directory" OFF)
-
 if(BUILD_FLASH_TESTS)
     add_subdirectory(test)
 endif()
