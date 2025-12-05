@@ -11,7 +11,7 @@ set(FLASH_SRC
 
 
 # Add the library target
-add_library(qoraal-flash STATIC ${FLASH_SRC})
+add_library(qoraal-flash OBJECT ${FLASH_SRC})
 
 # Link necessary libraries
 target_link_libraries(qoraal-flash qoraal)
