@@ -1,0 +1,6 @@
+name: qoraal-flash
+
+build:
+  cmake: zephyr
+  kconfig: zephyr/Kconfig
+

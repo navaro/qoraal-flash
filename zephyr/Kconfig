@@ -1,0 +1,11 @@
+menu "Qoraal-flash"
+
+config QORAAL_FLASH
+    bool "Enable Qoraal-flash framework"
+    default y
+
+
+
+
+
+endmenu
