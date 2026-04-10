@@ -48,8 +48,8 @@ static void
 main_thread(void* arg)
 {
     platform_start () ;
-    qoraal_start_default () ;
     qoraal_flash_start_default () ;
+    qoraal_start_default () ;
 
 }
 
