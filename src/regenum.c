@@ -21,6 +21,24 @@ regenum_resolve_types(const REGENUM_TYPE_T *types)
 }
 
 static const REGENUM_TYPE_T *
+regenum_type_at_internal(const REGENUM_TYPE_T *types, size_t type_index)
+{
+    size_t i;
+
+    if (!types) {
+        return NULL;
+    }
+
+    for (i = 0; types[i].type_name != NULL; i++) {
+        if (i == type_index) {
+            return &types[i];
+        }
+    }
+
+    return NULL;
+}
+
+static const REGENUM_TYPE_T *
 regenum_find_type_internal(const REGENUM_TYPE_T *types, const char *type_name)
 {
     size_t i;
@@ -61,10 +79,51 @@ regenum_default_types_get(size_t *count)
 }
 
 const REGENUM_TYPE_T *
+regenum_type_at(const REGENUM_TYPE_T *types, size_t type_index)
+{
+    types = regenum_resolve_types(types);
+    return regenum_type_at_internal(types, type_index);
+}
+
+const REGENUM_TYPE_T *
 regenum_find_type(const REGENUM_TYPE_T *types, const char *type_name)
 {
     types = regenum_resolve_types(types);
     return regenum_find_type_internal(types, type_name);
+}
+
+int32_t
+regenum_type_name_at(const REGENUM_TYPE_T *types, size_t type_index, const char **type_name)
+{
+    const REGENUM_TYPE_T *enum_type;
+
+    enum_type = regenum_type_at(types, type_index);
+    if (!enum_type || !type_name) {
+        return E_NOTFOUND;
+    }
+
+    *type_name = enum_type->type_name;
+    return EOK;
+}
+
+int32_t
+regenum_type_index(const REGENUM_TYPE_T *types, const char *type_name, size_t *type_index)
+{
+    size_t i;
+
+    types = regenum_resolve_types(types);
+    if (!types || !type_name || !type_index) {
+        return E_PARM;
+    }
+
+    for (i = 0; types[i].type_name != NULL; i++) {
+        if (strcmp(type_name, types[i].type_name) == 0) {
+            *type_index = i;
+            return EOK;
+        }
+    }
+
+    return E_NOTFOUND;
 }
 
 int32_t
@@ -93,6 +152,30 @@ regenum_get_by_name(const REGENUM_TYPE_T *types,
 }
 
 int32_t
+regenum_get_by_type_index_and_name(const REGENUM_TYPE_T *types,
+                                   size_t type_index, const char *name, int32_t *value)
+{
+    const REGENUM_TYPE_T *enum_type;
+    size_t i;
+
+    enum_type = regenum_type_at(types, type_index);
+    if (!enum_type || !name) {
+        return E_NOTFOUND;
+    }
+
+    for (i = 0; i < enum_type->count; i++) {
+        if (strcmp(enum_type->values[i].name, name) == 0) {
+            if (value) {
+                *value = enum_type->values[i].value;
+            }
+            return EOK;
+        }
+    }
+
+    return E_NOTFOUND;
+}
+
+int32_t
 regenum_get_by_value(const REGENUM_TYPE_T *types,
                      const char *type_name, int32_t value, const char **name)
 {
@@ -101,6 +184,36 @@ regenum_get_by_value(const REGENUM_TYPE_T *types,
 
     types = regenum_resolve_types(types);
     enum_type = regenum_find_type_internal(types, type_name);
+    if (!enum_type) {
+        if (name) {
+            *name = "";
+        }
+        return E_NOTFOUND;
+    }
+
+    for (i = 0; i < enum_type->count; i++) {
+        if (enum_type->values[i].value == value) {
+            if (name) {
+                *name = enum_type->values[i].name;
+            }
+            return EOK;
+        }
+    }
+
+    if (name) {
+        *name = "";
+    }
+    return E_NOTFOUND;
+}
+
+int32_t
+regenum_get_by_type_index_and_value(const REGENUM_TYPE_T *types,
+                                    size_t type_index, int32_t value, const char **name)
+{
+    const REGENUM_TYPE_T *enum_type;
+    size_t i;
+
+    enum_type = regenum_type_at(types, type_index);
     if (!enum_type) {
         if (name) {
             *name = "";
@@ -150,6 +263,32 @@ regenum_get_by_inx(const REGENUM_TYPE_T *types,
 }
 
 int32_t
+regenum_get_by_type_index_and_inx(const REGENUM_TYPE_T *types,
+                                  size_t type_index, size_t idx,
+                                  const char **name, int32_t *value)
+{
+    const REGENUM_TYPE_T *enum_type;
+
+    enum_type = regenum_type_at(types, type_index);
+    if (!enum_type) {
+        return E_NOTFOUND;
+    }
+
+    if (idx >= enum_type->count) {
+        return E_EOF;
+    }
+
+    if (name) {
+        *name = enum_type->values[idx].name;
+    }
+    if (value) {
+        *value = enum_type->values[idx].value;
+    }
+
+    return EOK;
+}
+
+int32_t
 regenum_get_next(const REGENUM_TYPE_T *types,
                  const char *type_name, int32_t value)
 {
@@ -158,6 +297,33 @@ regenum_get_next(const REGENUM_TYPE_T *types,
 
     types = regenum_resolve_types(types);
     enum_type = regenum_find_type_internal(types, type_name);
+    if (!enum_type || enum_type->count == 0) {
+        return E_NOTFOUND;
+    }
+
+    for (i = 0; i < enum_type->count; i++) {
+        if (enum_type->values[i].value == value) {
+            break;
+        }
+    }
+
+    if (i >= (enum_type->count - 1)) {
+        i = 0;
+    } else {
+        i++;
+    }
+
+    return enum_type->values[i].value;
+}
+
+int32_t
+regenum_get_next_by_type_index(const REGENUM_TYPE_T *types,
+                               size_t type_index, int32_t value)
+{
+    const REGENUM_TYPE_T *enum_type;
+    size_t i;
+
+    enum_type = regenum_type_at(types, type_index);
     if (!enum_type || enum_type->count == 0) {
         return E_NOTFOUND;
     }
@@ -204,5 +370,32 @@ regenum_get_prev(const REGENUM_TYPE_T *types,
 
     return enum_type->values[i].value;
 
+}
+
+int32_t
+regenum_get_prev_by_type_index(const REGENUM_TYPE_T *types,
+                               size_t type_index, int32_t value)
+{
+    const REGENUM_TYPE_T *enum_type;
+    size_t i;
+
+    enum_type = regenum_type_at(types, type_index);
+    if (!enum_type || enum_type->count == 0) {
+        return E_NOTFOUND;
+    }
+
+    for (i = 0; i < enum_type->count; i++) {
+        if (enum_type->values[i].value == value) {
+            break;
+        }
+    }
+
+    if (i >= enum_type->count || i == 0) {
+        i = enum_type->count - 1;
+    } else {
+        i--;
+    }
+
+    return enum_type->values[i].value;
 }
 

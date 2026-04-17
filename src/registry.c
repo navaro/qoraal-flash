@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include "qoraal/common/strsub.h"
+#include "qoraal-flash/regenum.h"
 #include "qoraal-flash/nvram/nvol3.h"
 #include "qoraal-flash/registry.h"
 
@@ -335,6 +336,57 @@ int32_t registry_string_set (REGISTRY_KEY_T id, const char* value ) {
 int32_t registry_enum_get_value (REGISTRY_KEY_T id, int32_t* value) {
     return registry_value_get(id, (char*)value, 0, sizeof(uint32_t)) ;
 }
+int32_t registry_enum_get_name (REGISTRY_KEY_T id, const char **name) {
+    int32_t value ;
+    uint16_t type ;
+    int32_t res ;
+
+    res = registry_value_get(id, (char*)&value, &type, sizeof(uint32_t)) ;
+    if (res < 0) {
+        if (name) {
+            *name = "" ;
+        }
+        return res ;
+    }
+
+    if (REGISTRY_GET_TYPE(type) != REGISTRY_TYPE_ENUM) {
+        if (name) {
+            *name = "" ;
+        }
+        return E_PARM ;
+    }
+
+    return regenum_get_by_type_index_and_value(0, REGISTRY_GET_ENUM_TYPE(type), value, name) ;
+}
+int32_t registry_enum_set_value (REGISTRY_KEY_T id, size_t enum_type, int32_t value) {
+    const REGENUM_TYPE_T *enum_desc ;
+    const char *enum_name ;
+    int32_t res ;
+
+    enum_desc = regenum_type_at(0, enum_type) ;
+    if (!enum_desc) {
+        return E_NOTFOUND ;
+    }
+
+    res = regenum_get_by_type_index_and_value(0, enum_type, value, &enum_name) ;
+    if (res < 0) {
+        return res ;
+    }
+
+    return registry_value_set(id, (const char*)&value,
+                              REGISTRY_TYPE(REGISTRY_TYPE_ENUM, enum_type), sizeof(uint32_t)) ;
+}
+int32_t registry_enum_set_name (REGISTRY_KEY_T id, size_t enum_type, const char *name) {
+    int32_t value ;
+    int32_t res ;
+
+    res = regenum_get_by_type_index_and_name(0, enum_type, name, &value) ;
+    if (res < 0) {
+        return res ;
+    }
+
+    return registry_enum_set_value(id, enum_type, value) ;
+}
 
 
 static NVOL3_ITERATOR_T _registry_it ;
@@ -445,6 +497,16 @@ _set_strval (REGISTRY_KEY_T id, uint16_t type, const char * value)
 
         }
 
+    } else if (REGISTRY_GET_TYPE(type) == REGISTRY_TYPE_ENUM) {
+        size_t enum_type = REGISTRY_GET_ENUM_TYPE(type) ;
+
+        res = regenum_get_by_type_index_and_name(0, enum_type, value, &intval) ;
+        if (res == EOK) {
+            res = registry_enum_set_value(id, enum_type, intval) ;
+        } else if (get_int_from_str(value, &intval) == EOK) {
+            res = registry_enum_set_value(id, enum_type, intval) ;
+        }
+
     } else if (REGISTRY_GET_TYPE(type) == REGISTRY_TYPE_BLOB) {
         res = registry_blob_value_set (id, (const uint8_t *)value) ;
 
@@ -483,13 +545,33 @@ registry_set_strval (REGISTRY_KEY_T id, const char * value, uint16_t type)
 int32_t
 registry_get_strval (REGISTRY_KEY_T id, char * value, uint32_t length, uint16_t * type)
 {
-    int32_t res = registry_value_get (id, value, type, length) ;
+    uint16_t stored_type ;
+    uint16_t *resolved_type = type ? type : &stored_type ;
+    int32_t res = registry_value_get (id, value, resolved_type, length) ;
     if (res < 0) {
         return res ;
     }
 
-    if (REGISTRY_GET_TYPE(*type) == REGISTRY_TYPE_STRING) {
+    if (REGISTRY_GET_TYPE(*resolved_type) == REGISTRY_TYPE_STRING) {
 
+
+    } else if (REGISTRY_GET_TYPE(*resolved_type) == REGISTRY_TYPE_ENUM) {
+        int32_t intval ;
+        const char *enum_name ;
+
+        if (length == 0) {
+            return E_PARM ;
+        }
+
+        memcpy (&intval, value, sizeof(int32_t));
+        res = regenum_get_by_type_index_and_value(0, REGISTRY_GET_ENUM_TYPE(*resolved_type), intval,
+                                                  &enum_name) ;
+        if (res < 0) {
+            value[0] = '\0' ;
+            return res ;
+        }
+
+        res = snprintf (value, length, "%s", enum_name) ;
 
     } else  {
         int32_t intval ;

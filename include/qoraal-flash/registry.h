@@ -25,6 +25,7 @@
 #ifndef __REGISTRY_H__
 #define __REGISTRY_H__
 
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include "qoraal-flash/nvram/nvol3.h"
@@ -60,9 +61,9 @@ typedef NVOL3_INSTANCE_T REGISTRY_INSTANCE_T;
 #define REGISTRY_TYPE_ENUM                  2
 #define REGISTRY_TYPE_BLOB                  3
 
-#define REGISTRY_GET_TYPE(type)             (type & 0xFF)
-#define REGISTRY_GET_ENUM_TYPE(type)        (type >> 8)
-#define REGISTRY_TYPE(type, enum_type)      (type)
+#define REGISTRY_GET_TYPE(type)             ((type) & 0xFF)
+#define REGISTRY_GET_ENUM_TYPE(type)        (((type) >> 8) & 0xFF)
+#define REGISTRY_TYPE(type, enum_type)      ((uint16_t)(REGISTRY_GET_TYPE(type) | (((uint16_t)(enum_type) & 0xFF) << 8)))
 
 /*===========================================================================*/
 /* Data structures and types.                                                */
@@ -103,6 +104,10 @@ extern "C" {
     int32_t     registry_string_length (REGISTRY_KEY_T id) ;
     int32_t     registry_string_get (REGISTRY_KEY_T id, char* value, unsigned int length ) ;
     int32_t     registry_string_set (REGISTRY_KEY_T id, const char* value ) ;
+    int32_t     registry_enum_get_value (REGISTRY_KEY_T id, int32_t* value) ;
+    int32_t     registry_enum_get_name (REGISTRY_KEY_T id, const char **name) ;
+    int32_t     registry_enum_set_value (REGISTRY_KEY_T id, size_t enum_type, int32_t value) ;
+    int32_t     registry_enum_set_name (REGISTRY_KEY_T id, size_t enum_type, const char *name) ;
 
     int32_t     registry_set_strval (REGISTRY_KEY_T id, const char * value, uint16_t type) ;
     int32_t     registry_get_strval (REGISTRY_KEY_T id, char * value, uint32_t length, uint16_t * type) ;
