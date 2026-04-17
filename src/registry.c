@@ -228,7 +228,7 @@ registry_value_type (REGISTRY_KEY_T id)
 
 }
 
-uint32_t
+int32_t
 registry_value_valid (REGISTRY_KEY_T id, uint16_t type)
 {
     if (!_registry_inst) return E_UNEXP ;
@@ -238,7 +238,12 @@ registry_value_valid (REGISTRY_KEY_T id, uint16_t type)
 
     scratch_set_key (id, 0, type) ;
     if (nvol3_record_get(_registry_inst, scratch_get()) > scratch_key_type_len ()) {
-        res = REGISTRY_GET_TYPE(scratch_get_type ()) == (type)  ;
+        uint16_t stored_type = scratch_get_type () ;
+        if (REGISTRY_GET_TYPE(type) == REGISTRY_TYPE_ENUM) {
+            res = (stored_type == type) ;
+        } else {
+            res = (REGISTRY_GET_TYPE(stored_type) == REGISTRY_GET_TYPE(type)) ;
+        }
     }
     os_mutex_unlock (&_registry_mutex) ;
 
@@ -275,7 +280,9 @@ registry_value_get(REGISTRY_KEY_T id, char* value, uint16_t* type, unsigned int 
     os_mutex_lock (&_registry_mutex) ;
 
     scratch_set_key (id, 0, 0) ;
-    memset(value, 0, length) ;
+    if (value && (length > 0)) {
+        memset(value, 0, length) ;
+    }
     if ((res = nvol3_record_get(_registry_inst, scratch_get())) > scratch_key_type_len ()) {
         res -= scratch_key_type_len () ;
         if (type) *type = scratch_get_type () ;
@@ -465,7 +472,7 @@ int32_t
 get_int_from_str(const char * value, int32_t* intval)
 {
     if ((value[0] == '0') && (value[1] == 'x')) {
-        if (sscanf(value, "0x%x", (unsigned int*)intval) < 0) {
+        if (sscanf(value, "0x%x", (unsigned int*)intval) < 1) {
             return E_VALIDATION ;
 
         }

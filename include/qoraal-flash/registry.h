@@ -91,7 +91,7 @@ extern "C" {
     int32_t     registry_repair (void) ;
 
     int32_t     registry_value_type (REGISTRY_KEY_T id) ;
-    uint32_t    registry_value_valid (REGISTRY_KEY_T id, uint16_t type) ;
+    int32_t     registry_value_valid (REGISTRY_KEY_T id, uint16_t type) ;
     int32_t     registry_value_delete (REGISTRY_KEY_T id) ;
     int32_t     registry_value_length (REGISTRY_KEY_T id) ;
     int32_t     registry_value_get (REGISTRY_KEY_T id, char* value, uint16_t* type, unsigned int length) ;
@@ -117,7 +117,7 @@ extern "C" {
 
     void        registry_log_status (void) ;
 
-    static inline uint32_t  registry_blob_valid (REGISTRY_KEY_T id) { return registry_value_valid(id, REGISTRY_TYPE_BLOB) ; }
+    static inline int32_t   registry_blob_valid (REGISTRY_KEY_T id) { return registry_value_valid(id, REGISTRY_TYPE_BLOB) ; }
     int32_t     registry_blob_value_set (REGISTRY_KEY_T id, const uint8_t * blob) ;
     int32_t     registry_blob_value_get (REGISTRY_KEY_T id, uint8_t * blob, uint32_t length) ;
 
