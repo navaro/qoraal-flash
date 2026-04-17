@@ -5,6 +5,7 @@ set(FLASH_SRC
     qshell/registrycmd.c
     qshell/syslogcmd.c
     registry.c
+    regenum.c
     syslog.c
     qoraal.c
 )

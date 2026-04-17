@@ -16,6 +16,7 @@ zephyr_library_sources_ifdef(CONFIG_QORAAL_FLASH
     ${CMAKE_CURRENT_LIST_DIR}/../src/qshell/registrycmd.c
     ${CMAKE_CURRENT_LIST_DIR}/../src/qshell/syslogcmd.c
     ${CMAKE_CURRENT_LIST_DIR}/../src/registry.c
+    ${CMAKE_CURRENT_LIST_DIR}/../src/regenum.c
     ${CMAKE_CURRENT_LIST_DIR}/../src/syslog.c
     ${CMAKE_CURRENT_LIST_DIR}/../src/qoraal.c
 

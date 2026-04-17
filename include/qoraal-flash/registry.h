@@ -61,8 +61,8 @@ typedef NVOL3_INSTANCE_T REGISTRY_INSTANCE_T;
 #define REGISTRY_TYPE_BLOB                  3
 
 #define REGISTRY_GET_TYPE(type)             (type & 0xFF)
-#define REGISTRY_GET_ENUM_TYPE(type)        ((type>>8) & 0xFF)
-#define REGISTRY_TYPE(type, enum_type)      (type | (enum_type<<8))
+#define REGISTRY_GET_ENUM_TYPE(type)        (type >> 8)
+#define REGISTRY_TYPE(type, enum_type)      (type)
 
 /*===========================================================================*/
 /* Data structures and types.                                                */
