@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "qoraal/common/types.h"
 
 /*===========================================================================*/
 /* Client pre-compile time settings.                                         */
@@ -22,16 +23,8 @@
 /*===========================================================================*/
 /* Data structures and types.                                                */
 /*===========================================================================*/
-typedef struct REGENUM_VALUE_S {
-    const char *name;
-    int32_t value;
-} REGENUM_VALUE_T;
-
-typedef struct REGENUM_TYPE_S {
-    const char *type_name;
-    const REGENUM_VALUE_T *values;
-    size_t count;
-} REGENUM_TYPE_T;
+typedef QORAAL_ENUM_VALUE_T REGENUM_VALUE_T;
+typedef QORAAL_ENUM_TYPE_T REGENUM_TYPE_T;
 
 /*===========================================================================*/
 /* External declarations.                                                    */
