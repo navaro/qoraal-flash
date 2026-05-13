@@ -50,8 +50,8 @@ extern "C" {
     /* Look up by name. */
     const REGENUM_TYPE_T *regenum_find_type(const char *type_name);
 
-    /* Returns the head of the list and writes the count into *count. */
-    const REGENUM_TYPE_T *regenum_default_types_get(size_t *count);
+    /* Returns the head of the list and writes the count of registered types into *count. */
+    const REGENUM_TYPE_T *regenum_type_list_get(size_t *count);
 
     /* Returns the name of the type with the given ID. */
     int32_t regenum_type_name_at(size_t id, const char **type_name);

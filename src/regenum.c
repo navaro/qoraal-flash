@@ -72,6 +72,10 @@ regenum_register_type(REGENUM_TYPE_T *type, int32_t id)
         return E_PARM;
     }
 
+    if (regenum_type_by_id_internal(id) != NULL) {
+        return E_INVAL; /* duplicate ID */
+    }
+
     type->id   = (uint16_t)id;
     type->next = NULL;
 
@@ -124,7 +128,7 @@ regenum_find_type(const char *type_name)
  * Returns the head pointer (same as regenum_type_first).
  */
 const REGENUM_TYPE_T *
-regenum_default_types_get(size_t *count)
+regenum_type_list_get(size_t *count)
 {
     if (count) {
         size_t n = 0;
