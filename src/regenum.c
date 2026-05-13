@@ -12,92 +12,141 @@
 #include "qoraal-flash/regenum.h"
 
 
-static const REGENUM_TYPE_T *_regenum_default_types = 0;
+/* Head of the global linked list of registered enum types. */
+static REGENUM_TYPE_T *_regenum_head = NULL;
 
+/* --- Private helpers ---------------------------------------------------- */
+
+/* Walk the linked list and return the type matching the given unique ID. */
 static const REGENUM_TYPE_T *
-regenum_resolve_types(const REGENUM_TYPE_T *types)
+regenum_type_by_id_internal(int32_t id)
 {
-    return types ? types : _regenum_default_types;
-}
+    const REGENUM_TYPE_T *cur = _regenum_head;
 
-static const REGENUM_TYPE_T *
-regenum_type_at_internal(const REGENUM_TYPE_T *types, size_t type_index)
-{
-    size_t i;
-
-    if (!types) {
-        return NULL;
-    }
-
-    for (i = 0; types[i].type_name != NULL; i++) {
-        if (i == type_index) {
-            return &types[i];
+    while (cur) {
+        if (cur->id == id) {
+            return cur;
         }
+        cur = cur->next;
     }
 
     return NULL;
 }
 
+/* Walk the linked list and return the type matching the given name. */
 static const REGENUM_TYPE_T *
-regenum_find_type_internal(const REGENUM_TYPE_T *types, const char *type_name)
+regenum_find_type_internal(const char *type_name)
 {
-    size_t i;
+    const REGENUM_TYPE_T *cur = _regenum_head;
 
-    if (!types || !type_name) {
+    if (!type_name) {
         return NULL;
     }
 
-    for (i = 0; types[i].type_name != NULL; i++) {
-        if (strcmp(type_name, types[i].type_name) == 0) {
-            return &types[i];
+    while (cur) {
+        if (cur->type_name && strcmp(cur->type_name, type_name) == 0) {
+            return cur;
         }
+        cur = cur->next;
     }
 
     return NULL;
 }
 
+/* --- Public API ---------------------------------------------------------- */
+
+/*
+ * Register a single enum type.  The caller fills all fields of *type
+ * (type_name, values, count) before calling.  id must be unique across all
+ * registered types; it is stored in type->id and is used as the enum-type
+ * discriminator in the registry on-flash format (must fit in 8 bits: 0-255).
+ * Types are appended in registration order so iteration is deterministic.
+ */
 int32_t
-regenum_register_types(const REGENUM_TYPE_T *types)
+regenum_register_type(REGENUM_TYPE_T *type, int32_t id)
 {
-    _regenum_default_types = types;
+    REGENUM_TYPE_T *cur;
+    REGENUM_TYPE_T *tail = NULL;
+
+    if (!type || !type->type_name) {
+        return E_PARM;
+    }
+
+    type->id   = (uint16_t)id;
+    type->next = NULL;
+
+    /* Append at tail to preserve registration order. */
+    cur = _regenum_head;
+    while (cur) {
+        tail = cur;
+        cur  = cur->next;
+    }
+
+    if (tail) {
+        tail->next = type;
+    } else {
+        _regenum_head = type;
+    }
 
     return EOK;
 }
 
+/* Return the first registered type (head of the linked list). */
+const REGENUM_TYPE_T *
+regenum_type_first(void)
+{
+    return _regenum_head;
+}
+
+/* Return the type that follows 'type' in the linked list, or NULL. */
+const REGENUM_TYPE_T *
+regenum_type_next(const REGENUM_TYPE_T *type)
+{
+    return type ? type->next : NULL;
+}
+
+/* Look up a registered type by its unique ID. */
+const REGENUM_TYPE_T *
+regenum_type_at(size_t id)
+{
+    return regenum_type_by_id_internal((int32_t)id);
+}
+
+/* Look up a registered type by name. */
+const REGENUM_TYPE_T *
+regenum_find_type(const char *type_name)
+{
+    return regenum_find_type_internal(type_name);
+}
+
+/*
+ * Walk the linked list and return its length via *count.
+ * Returns the head pointer (same as regenum_type_first).
+ */
 const REGENUM_TYPE_T *
 regenum_default_types_get(size_t *count)
 {
     if (count) {
-        size_t i = 0;
-        if (_regenum_default_types) {
-            while (_regenum_default_types[i].type_name) i++;
+        size_t n = 0;
+        const REGENUM_TYPE_T *cur = _regenum_head;
+
+        while (cur) {
+            n++;
+            cur = cur->next;
         }
-        *count = i;
+        *count = n;
     }
 
-    return _regenum_default_types;
+    return _regenum_head;
 }
 
-const REGENUM_TYPE_T *
-regenum_type_at(const REGENUM_TYPE_T *types, size_t type_index)
-{
-    types = regenum_resolve_types(types);
-    return regenum_type_at_internal(types, type_index);
-}
-
-const REGENUM_TYPE_T *
-regenum_find_type(const REGENUM_TYPE_T *types, const char *type_name)
-{
-    types = regenum_resolve_types(types);
-    return regenum_find_type_internal(types, type_name);
-}
-
+/* Return the name of the type with the given ID. */
 int32_t
-regenum_type_name_at(const REGENUM_TYPE_T *types, size_t type_index, const char **type_name)
+regenum_type_name_at(size_t id, const char **type_name)
 {
     const REGENUM_TYPE_T *enum_type;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_at(id);
     if (!enum_type || !type_name) {
         return E_NOTFOUND;
     }
@@ -106,35 +155,32 @@ regenum_type_name_at(const REGENUM_TYPE_T *types, size_t type_index, const char 
     return EOK;
 }
 
+/* Return the unique ID of the named type in *type_index. */
 int32_t
-regenum_type_index(const REGENUM_TYPE_T *types, const char *type_name, size_t *type_index)
+regenum_type_index(const char *type_name, size_t *type_index)
 {
-    size_t i;
+    const REGENUM_TYPE_T *found;
 
-    types = regenum_resolve_types(types);
-    if (!types || !type_name || !type_index) {
+    if (!type_name || !type_index) {
         return E_PARM;
     }
 
-    for (i = 0; types[i].type_name != NULL; i++) {
-        if (strcmp(type_name, types[i].type_name) == 0) {
-            *type_index = i;
-            return EOK;
-        }
+    found = regenum_find_type_internal(type_name);
+    if (!found) {
+        return E_NOTFOUND;
     }
 
-    return E_NOTFOUND;
+    *type_index = (size_t)found->id;
+    return EOK;
 }
 
 int32_t
-regenum_get_by_name(const REGENUM_TYPE_T *types,
-                    const char *type_name, const char *name, int32_t *value)
+regenum_get_by_name(const char *type_name, const char *name, int32_t *value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    types = regenum_resolve_types(types);
-    enum_type = regenum_find_type_internal(types, type_name);
+    enum_type = regenum_find_type_internal(type_name);
     if (!enum_type || !name) {
         return E_NOTFOUND;
     }
@@ -152,13 +198,12 @@ regenum_get_by_name(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_by_type_index_and_name(const REGENUM_TYPE_T *types,
-                                   size_t type_index, const char *name, int32_t *value)
+regenum_get_by_id_and_name(int32_t id, const char *name, int32_t *value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_by_id_internal(id);
     if (!enum_type || !name) {
         return E_NOTFOUND;
     }
@@ -176,14 +221,12 @@ regenum_get_by_type_index_and_name(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_by_value(const REGENUM_TYPE_T *types,
-                     const char *type_name, int32_t value, const char **name)
+regenum_get_by_value(const char *type_name, int32_t value, const char **name)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    types = regenum_resolve_types(types);
-    enum_type = regenum_find_type_internal(types, type_name);
+    enum_type = regenum_find_type_internal(type_name);
     if (!enum_type) {
         if (name) {
             *name = "";
@@ -207,13 +250,12 @@ regenum_get_by_value(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_by_type_index_and_value(const REGENUM_TYPE_T *types,
-                                    size_t type_index, int32_t value, const char **name)
+regenum_get_by_id_and_value(int32_t id, int32_t value, const char **name)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_by_id_internal(id);
     if (!enum_type) {
         if (name) {
             *name = "";
@@ -237,13 +279,11 @@ regenum_get_by_type_index_and_value(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_by_inx(const REGENUM_TYPE_T *types,
-                   const char *type_name, size_t idx, const char **name, int32_t *value)
+regenum_get_by_inx(const char *type_name, size_t idx, const char **name, int32_t *value)
 {
     const REGENUM_TYPE_T *enum_type;
 
-    types = regenum_resolve_types(types);
-    enum_type = regenum_find_type_internal(types, type_name);
+    enum_type = regenum_find_type_internal(type_name);
     if (!enum_type) {
         return E_NOTFOUND;
     }
@@ -263,13 +303,11 @@ regenum_get_by_inx(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_by_type_index_and_inx(const REGENUM_TYPE_T *types,
-                                  size_t type_index, size_t idx,
-                                  const char **name, int32_t *value)
+regenum_get_by_id_and_inx(int32_t id, size_t idx, const char **name, int32_t *value)
 {
     const REGENUM_TYPE_T *enum_type;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_by_id_internal(id);
     if (!enum_type) {
         return E_NOTFOUND;
     }
@@ -289,14 +327,12 @@ regenum_get_by_type_index_and_inx(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_next(const REGENUM_TYPE_T *types,
-                 const char *type_name, int32_t value)
+regenum_get_next(const char *type_name, int32_t value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    types = regenum_resolve_types(types);
-    enum_type = regenum_find_type_internal(types, type_name);
+    enum_type = regenum_find_type_internal(type_name);
     if (!enum_type || enum_type->count == 0) {
         return E_NOTFOUND;
     }
@@ -317,13 +353,12 @@ regenum_get_next(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_next_by_type_index(const REGENUM_TYPE_T *types,
-                               size_t type_index, int32_t value)
+regenum_get_next_by_id(int32_t id, int32_t value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_by_id_internal(id);
     if (!enum_type || enum_type->count == 0) {
         return E_NOTFOUND;
     }
@@ -344,14 +379,12 @@ regenum_get_next_by_type_index(const REGENUM_TYPE_T *types,
 }
 
 int32_t
-regenum_get_prev(const REGENUM_TYPE_T *types,
-                 const char *type_name, int32_t value)
+regenum_get_prev(const char *type_name, int32_t value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    types = regenum_resolve_types(types);
-    enum_type = regenum_find_type_internal(types, type_name);
+    enum_type = regenum_find_type_internal(type_name);
     if (!enum_type || enum_type->count == 0) {
         return E_NOTFOUND;
     }
@@ -369,17 +402,15 @@ regenum_get_prev(const REGENUM_TYPE_T *types,
     }
 
     return enum_type->values[i].value;
-
 }
 
 int32_t
-regenum_get_prev_by_type_index(const REGENUM_TYPE_T *types,
-                               size_t type_index, int32_t value)
+regenum_get_prev_by_id(int32_t id, int32_t value)
 {
     const REGENUM_TYPE_T *enum_type;
     size_t i;
 
-    enum_type = regenum_type_at(types, type_index);
+    enum_type = regenum_type_by_id_internal(id);
     if (!enum_type || enum_type->count == 0) {
         return E_NOTFOUND;
     }

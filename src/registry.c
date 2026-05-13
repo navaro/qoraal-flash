@@ -363,19 +363,19 @@ int32_t registry_enum_get_name (REGISTRY_KEY_T id, const char **name) {
         return E_PARM ;
     }
 
-    return regenum_get_by_type_index_and_value(0, REGISTRY_GET_ENUM_TYPE(type), value, name) ;
+    return regenum_get_by_id_and_value(REGISTRY_GET_ENUM_TYPE(type), value, name) ;
 }
 int32_t registry_enum_set_value (REGISTRY_KEY_T id, size_t enum_type, int32_t value) {
     const REGENUM_TYPE_T *enum_desc ;
     const char *enum_name ;
     int32_t res ;
 
-    enum_desc = regenum_type_at(0, enum_type) ;
+    enum_desc = regenum_type_at(enum_type) ;
     if (!enum_desc) {
         return E_NOTFOUND ;
     }
 
-    res = regenum_get_by_type_index_and_value(0, enum_type, value, &enum_name) ;
+    res = regenum_get_by_id_and_value(enum_type, value, &enum_name) ;
     if (res < 0) {
         return res ;
     }
@@ -387,7 +387,7 @@ int32_t registry_enum_set_name (REGISTRY_KEY_T id, size_t enum_type, const char 
     int32_t value ;
     int32_t res ;
 
-    res = regenum_get_by_type_index_and_name(0, enum_type, name, &value) ;
+    res = regenum_get_by_id_and_name(enum_type, name, &value) ;
     if (res < 0) {
         return res ;
     }
@@ -507,7 +507,7 @@ _set_strval (REGISTRY_KEY_T id, uint16_t type, const char * value)
     } else if (REGISTRY_GET_TYPE(type) == REGISTRY_TYPE_ENUM) {
         size_t enum_type = REGISTRY_GET_ENUM_TYPE(type) ;
 
-        res = regenum_get_by_type_index_and_name(0, enum_type, value, &intval) ;
+        res = regenum_get_by_id_and_name(enum_type, value, &intval) ;
         if (res == EOK) {
             res = registry_enum_set_value(id, enum_type, intval) ;
         } else if (get_int_from_str(value, &intval) == EOK) {
@@ -571,7 +571,7 @@ registry_get_strval (REGISTRY_KEY_T id, char * value, uint32_t length, uint16_t 
         }
 
         memcpy (&intval, value, sizeof(int32_t));
-        res = regenum_get_by_type_index_and_value(0, REGISTRY_GET_ENUM_TYPE(*resolved_type), intval,
+        res = regenum_get_by_id_and_value(REGISTRY_GET_ENUM_TYPE(*resolved_type), intval,
                                                   &enum_name) ;
         if (res < 0) {
             value[0] = '\0' ;

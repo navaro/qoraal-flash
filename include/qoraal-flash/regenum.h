@@ -34,41 +34,44 @@ typedef QORAAL_ENUM_TYPE_T REGENUM_TYPE_T;
 extern "C" {
 #endif
 
-    int32_t regenum_register_types(const REGENUM_TYPE_T *types);
+    /* Register a single type into the global linked list.
+     * 'id' is the unique discriminator stored in on-flash registry records
+     * (must fit in 8 bits: 0-255).  The id and next fields of *type are set
+     * by this function; all other fields must be filled by the caller. */
+    int32_t regenum_register_type(REGENUM_TYPE_T *type, int32_t id);
+
+    /* Linked-list iteration. */
+    const REGENUM_TYPE_T *regenum_type_first(void);
+    const REGENUM_TYPE_T *regenum_type_next(const REGENUM_TYPE_T *type);
+
+    /* Look up by unique ID. */
+    const REGENUM_TYPE_T *regenum_type_at(size_t id);
+
+    /* Look up by name. */
+    const REGENUM_TYPE_T *regenum_find_type(const char *type_name);
+
+    /* Returns the head of the list and writes the count into *count. */
     const REGENUM_TYPE_T *regenum_default_types_get(size_t *count);
-    const REGENUM_TYPE_T *regenum_type_at(const REGENUM_TYPE_T *types, size_t type_index);
-    const REGENUM_TYPE_T *regenum_find_type(const REGENUM_TYPE_T *types,
-                                            const char *type_name);
-    int32_t regenum_type_name_at(const REGENUM_TYPE_T *types, size_t type_index,
-                                 const char **type_name);
-    int32_t regenum_type_index(const REGENUM_TYPE_T *types, const char *type_name,
-                               size_t *type_index);
 
-    int32_t regenum_get_by_name(const REGENUM_TYPE_T *types,
-                                const char *type_name, const char *name, int32_t *value);
-    int32_t regenum_get_by_type_index_and_name(const REGENUM_TYPE_T *types,
-                                               size_t type_index, const char *name,
-                                               int32_t *value);
-    int32_t regenum_get_by_value(const REGENUM_TYPE_T *types,
-                                 const char *type_name, int32_t value, const char **name);
-    int32_t regenum_get_by_type_index_and_value(const REGENUM_TYPE_T *types,
-                                                size_t type_index, int32_t value,
-                                                const char **name);
-    int32_t regenum_get_by_inx(const REGENUM_TYPE_T *types,
-                               const char *type_name, size_t idx, const char **name,
+    /* Returns the name of the type with the given ID. */
+    int32_t regenum_type_name_at(size_t id, const char **type_name);
+
+    /* Returns the unique ID of the named type in *type_index. */
+    int32_t regenum_type_index(const char *type_name, size_t *type_index);
+
+    int32_t regenum_get_by_name(const char *type_name, const char *name, int32_t *value);
+    int32_t regenum_get_by_id_and_name(int32_t id, const char *name, int32_t *value);
+    int32_t regenum_get_by_value(const char *type_name, int32_t value, const char **name);
+    int32_t regenum_get_by_id_and_value(int32_t id, int32_t value, const char **name);
+    int32_t regenum_get_by_inx(const char *type_name, size_t idx, const char **name,
                                int32_t *value);
-    int32_t regenum_get_by_type_index_and_inx(const REGENUM_TYPE_T *types,
-                                              size_t type_index, size_t idx,
-                                              const char **name, int32_t *value);
+    int32_t regenum_get_by_id_and_inx(int32_t id, size_t idx, const char **name,
+                                      int32_t *value);
 
-    int32_t regenum_get_next(const REGENUM_TYPE_T *types,
-                             const char *type_name, int32_t value);
-    int32_t regenum_get_next_by_type_index(const REGENUM_TYPE_T *types,
-                                           size_t type_index, int32_t value);
-    int32_t regenum_get_prev(const REGENUM_TYPE_T *types,
-                             const char *type_name, int32_t value);
-    int32_t regenum_get_prev_by_type_index(const REGENUM_TYPE_T *types,
-                                           size_t type_index, int32_t value);
+    int32_t regenum_get_next(const char *type_name, int32_t value);
+    int32_t regenum_get_next_by_id(int32_t id, int32_t value);
+    int32_t regenum_get_prev(const char *type_name, int32_t value);
+    int32_t regenum_get_prev_by_id(int32_t id, int32_t value);
 
 #ifdef __cplusplus
 }

@@ -28,7 +28,7 @@ reg_type_name(uint16_t type, char * buffer, size_t length)
         return "int" ;
 
     case REGISTRY_TYPE_ENUM:
-        if ((regenum_type_name_at(0, REGISTRY_GET_ENUM_TYPE(type), &enum_type_name) == EOK) &&
+        if ((regenum_type_name_at(REGISTRY_GET_ENUM_TYPE(type), &enum_type_name) == EOK) &&
                 enum_type_name) {
             snprintf(buffer, length, "enum:%s", enum_type_name) ;
         } else {
@@ -103,7 +103,7 @@ reg_parse_type_arg(const char * type_arg, uint16_t * type)
         enum_name = type_arg + 5 ;
     }
 
-    if (regenum_type_index(0, enum_name, &enum_type) == EOK) {
+    if (regenum_type_index(enum_name, &enum_type) == EOK) {
         *type = REGISTRY_TYPE(REGISTRY_TYPE_ENUM, enum_type) ;
         return EOK ;
     }
@@ -281,31 +281,34 @@ qshell_cmd_regadd(SVC_SHELL_IF_T * pif, char** argv, int argc)
 int32_t
 qshell_cmd_regenum(SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
-    const REGENUM_TYPE_T *types ;
+    const REGENUM_TYPE_T *enum_type ;
+    const REGENUM_TYPE_T *cur ;
     size_t type_count = 0 ;
-    size_t i ;
     uint32_t shown = 0 ;
 
     if (argc > 2) {
         return SVC_SHELL_CMD_E_PARMS ;
     }
 
-    types = regenum_default_types_get(&type_count) ;
-    if (!types || (type_count == 0)) {
+    enum_type = regenum_type_first() ;
+    if (!enum_type) {
         svc_shell_print (pif, SVC_SHELL_OUT_STD,
             "no enum types registered" SVC_SHELL_NEWLINE) ;
         return SVC_SHELL_CMD_E_OK ;
     }
 
+    for (cur = enum_type ; cur ; cur = regenum_type_next(cur)) {
+        type_count++ ;
+    }
+
     svc_shell_print (pif, SVC_SHELL_OUT_STD,
         "registered enum types: %u" SVC_SHELL_NEWLINE, (unsigned int)type_count) ;
 
-    for (i = 0 ; i < type_count ; i++) {
-        const REGENUM_TYPE_T *enum_type = regenum_type_at(0, i) ;
+    for ( ; enum_type ; enum_type = regenum_type_next(enum_type)) {
         char type_label[48] ;
         size_t j ;
 
-        if (!enum_type || !enum_type->type_name) {
+        if (!enum_type->type_name) {
             continue ;
         }
 
@@ -314,7 +317,7 @@ qshell_cmd_regenum(SVC_SHELL_IF_T * pif, char** argv, int argc)
         }
 
         shown++ ;
-        snprintf(type_label, sizeof(type_label), "%u:%s", (unsigned int)i, enum_type->type_name) ;
+        snprintf(type_label, sizeof(type_label), "%d:%s", (int)enum_type->id, enum_type->type_name) ;
         svc_shell_print_table (pif, SVC_SHELL_OUT_STD,
             type_label, 28, "%u values" SVC_SHELL_NEWLINE, (unsigned int)enum_type->count) ;
 
@@ -327,7 +330,7 @@ qshell_cmd_regenum(SVC_SHELL_IF_T * pif, char** argv, int argc)
             }
         }
     }
-   
+
 
     if ((argc == 2) && (shown == 0)) {
         svc_shell_print (pif, SVC_SHELL_OUT_STD,
