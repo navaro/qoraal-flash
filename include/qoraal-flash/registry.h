@@ -61,9 +61,14 @@ typedef NVOL3_INSTANCE_T REGISTRY_INSTANCE_T;
 #define REGISTRY_TYPE_ENUM                  2
 #define REGISTRY_TYPE_BLOB                  3
 
-#define REGISTRY_GET_TYPE(type)             ((type) & 0xFF)
-#define REGISTRY_GET_ENUM_TYPE(type)        (((type) >> 8) & 0xFF)
-#define REGISTRY_TYPE(type, enum_type)      ((uint16_t)(REGISTRY_GET_TYPE(type) | (((uint16_t)(enum_type) & 0xFF) << 8)))
+#define REGISTRY_TYPE_BITS                  3
+#define REGISTRY_TYPE_MASK                  0x0007
+#define REGISTRY_ENUM_TYPE_MASK             0x1FFF
+#define REGISTRY_ENUM_TYPE_MAX              REGISTRY_ENUM_TYPE_MASK
+
+#define REGISTRY_GET_TYPE(type)             ((type) & REGISTRY_TYPE_MASK)
+#define REGISTRY_GET_ENUM_TYPE(type)        (((type) >> REGISTRY_TYPE_BITS) & REGISTRY_ENUM_TYPE_MASK)
+#define REGISTRY_TYPE(type, enum_type)      ((uint16_t)(REGISTRY_GET_TYPE(type) | (((uint16_t)(enum_type) & REGISTRY_ENUM_TYPE_MASK) << REGISTRY_TYPE_BITS)))
 
 /*===========================================================================*/
 /* Data structures and types.                                                */

@@ -26,6 +26,8 @@
 typedef QORAAL_ENUM_VALUE_T REGENUM_VALUE_T;
 typedef QORAAL_ENUM_TYPE_T REGENUM_TYPE_T;
 
+#define REGENUM_TYPE_ID_MAX 0x1FFF
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
@@ -36,7 +38,7 @@ extern "C" {
 
     /* Register a single type into the global linked list.
      * 'id' is the unique discriminator stored in on-flash registry records
-     * (must fit in 8 bits: 0-255).  The id and next fields of *type are set
+     * (must fit in 13 bits: 0-8191). The id and next fields of *type are set
      * by this function; all other fields must be filled by the caller. */
     int32_t regenum_register_type(REGENUM_TYPE_T *type, int32_t id);
 

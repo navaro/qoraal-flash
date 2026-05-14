@@ -59,7 +59,7 @@ regenum_find_type_internal(const char *type_name)
  * Register a single enum type.  The caller fills all fields of *type
  * (type_name, values, count) before calling.  id must be unique across all
  * registered types; it is stored in type->id and is used as the enum-type
- * discriminator in the registry on-flash format (must fit in 8 bits: 0-255).
+ * discriminator in the registry on-flash format (must fit in 13 bits: 0-8191).
  * Types are appended in registration order so iteration is deterministic.
  */
 int32_t
@@ -68,7 +68,7 @@ regenum_register_type(REGENUM_TYPE_T *type, int32_t id)
     REGENUM_TYPE_T *cur;
     REGENUM_TYPE_T *tail = NULL;
 
-    if (!type || !type->type_name) {
+    if (!type || !type->type_name || id < 0 || id > REGENUM_TYPE_ID_MAX) {
         return E_PARM;
     }
 
@@ -433,4 +433,3 @@ regenum_get_prev_by_id(int32_t id, int32_t value)
 
     return enum_type->values[i].value;
 }
-
