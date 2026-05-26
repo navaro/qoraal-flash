@@ -33,7 +33,7 @@
 #define FLASH_ERASE(start, end)          qoraal_flash_erase((start), (end))
 
 #define NLOG3_LOG_RECORD_ALIGN           8U
-#define NLOG3_SECTOR_VERSION             1U
+#define NLOG3_SECTOR_VERSION             3U
 #define NLOG3_RECORD_MAGIC               0x33474C4EU
 #define NLOG3_SECTOR_MAGIC               0x33534C4EU
 #define NLOG3_CRC32_POLY                 0xEDB88320U
@@ -61,10 +61,15 @@ NLOG3_STATIC_ASSERT(nlog3_record_state_is_first,
                     offsetof(NLOG3_RECORD_HEADER_T, state) == 0U);
 NLOG3_STATIC_ASSERT(nlog3_sector_state_is_first,
                     offsetof(NLOG3_SECTOR_HEADER_T, state) == 0U);
+NLOG3_STATIC_ASSERT(nlog3_record_header_is_aligned,
+                    (sizeof(NLOG3_RECORD_HEADER_T) %
+                     NLOG3_LOG_RECORD_ALIGN) == 0U);
 
 typedef struct NLOG3_SECTOR_SCAN_S {
     uint32_t end_addr;
     uint32_t terminal;
+    uint32_t has_records;
+    uint32_t last_record_addr;
 } NLOG3_SECTOR_SCAN_T;
 
 static uint32_t
@@ -154,6 +159,12 @@ static uint32_t
 nlog3_sector_addr(const NLOG3_T *plog, uint32_t sector)
 {
     return plog->startaddr + (plog->sectorsize * sector);
+}
+
+static uint32_t
+nlog3_record_offset(const NLOG3_T *plog, uint32_t addr)
+{
+    return addr - plog->startaddr;
 }
 
 static uint32_t
@@ -439,8 +450,12 @@ nlog3_sector_scan(NLOG3_T *plog,
     end = nlog3_sector_end(plog, sector);
     scan->terminal = NLOG3_SCAN_TERMINAL;
     scan->end_addr = addr;
+    scan->has_records = 0U;
+    scan->last_record_addr = addr;
 
     while (addr < end) {
+        uint32_t record_addr = addr;
+
         res = nlog3_record_read(plog, sector, addr, &header, &scan_type);
         if (res != EOK) {
             return res;
@@ -452,10 +467,8 @@ nlog3_sector_scan(NLOG3_T *plog,
             return EOK;
         }
 
-        if (header.desc.id >= plog->id) {
-            plog->id = header.desc.id + 1U;
-        }
-
+        scan->has_records = 1U;
+        scan->last_record_addr = record_addr;
         addr += header.total_size;
     }
 
@@ -463,30 +476,6 @@ nlog3_sector_scan(NLOG3_T *plog,
     scan->end_addr = end;
 
     return EOK;
-}
-
-static int32_t
-nlog3_find_newest_sector(NLOG3_T *plog, uint32_t *sector, uint32_t *sequence)
-{
-    NLOG3_SECTOR_HEADER_T header;
-    uint32_t i;
-    uint32_t found = 0U;
-    int32_t res;
-
-    for (i = 0U; i < plog->sectorcount; i++) {
-        res = nlog3_sector_header_read(plog, i, &header);
-        if (res == EOK) {
-            if (!found || nlog3_seq_after(header.sequence, *sequence)) {
-                *sector = i;
-                *sequence = header.sequence;
-                found = 1U;
-            }
-        } else if ((res != E_NOTFOUND) && (res != E_CORRUPT)) {
-            return res;
-        }
-    }
-
-    return found ? EOK : E_NOTFOUND;
 }
 
 static int32_t
@@ -527,38 +516,10 @@ nlog3_find_oldest_sector(NLOG3_T *plog, uint32_t *sector, uint32_t *sequence)
     for (i = 0U; i < plog->sectorcount; i++) {
         res = nlog3_sector_header_read(plog, i, &header);
         if (res == EOK) {
-            if (!found || nlog3_seq_before(header.sequence, *sequence)) {
+            if ((header.state == NLOG3_RECORD_STATE_VALID) &&
+                (!found || nlog3_seq_before(header.sequence, *sequence))) {
                 *sector = i;
                 *sequence = header.sequence;
-                found = 1U;
-            }
-        } else if ((res != E_NOTFOUND) && (res != E_CORRUPT)) {
-            return res;
-        }
-    }
-
-    return found ? EOK : E_NOTFOUND;
-}
-
-static int32_t
-nlog3_find_sector_before(NLOG3_T *plog,
-                         uint32_t sequence,
-                         uint32_t *sector,
-                         uint32_t *previous_sequence)
-{
-    NLOG3_SECTOR_HEADER_T header;
-    uint32_t i;
-    uint32_t found = 0U;
-    int32_t res;
-
-    for (i = 0U; i < plog->sectorcount; i++) {
-        res = nlog3_sector_header_read(plog, i, &header);
-        if (res == EOK) {
-            if (nlog3_seq_before(header.sequence, sequence) &&
-                (!found || nlog3_seq_after(header.sequence,
-                                           *previous_sequence))) {
-                *sector = i;
-                *previous_sequence = header.sequence;
                 found = 1U;
             }
         } else if ((res != E_NOTFOUND) && (res != E_CORRUPT)) {
@@ -583,7 +544,8 @@ nlog3_find_sector_after(NLOG3_T *plog,
     for (i = 0U; i < plog->sectorcount; i++) {
         res = nlog3_sector_header_read(plog, i, &header);
         if (res == EOK) {
-            if (nlog3_seq_after(header.sequence, sequence) &&
+            if ((header.state == NLOG3_RECORD_STATE_VALID) &&
+                nlog3_seq_after(header.sequence, sequence) &&
                 (!found || nlog3_seq_before(header.sequence,
                                             *next_sequence))) {
                 *sector = i;
@@ -598,49 +560,9 @@ nlog3_find_sector_after(NLOG3_T *plog,
     return found ? EOK : E_NOTFOUND;
 }
 
-static int32_t
-nlog3_filter_match(const NLOG3_FILTER_T *filter,
-                   const NLOG3_EVENT_DESC_T *desc)
-{
-    if (!filter || (filter->mask == 0U)) {
-        return 1;
-    }
-    if ((filter->mask & NLOG3_FILTER_FLAGS_ANY) &&
-        ((desc->flags & filter->flags_any) == 0U)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_FLAGS_ALL) &&
-        ((desc->flags & filter->flags_all) != filter->flags_all)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_FLAGS_NONE) &&
-        ((desc->flags & filter->flags_none) != 0U)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_MODULE) &&
-        (desc->module != filter->module)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_TYPE) &&
-        (desc->type != filter->type)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_VERSION) &&
-        (desc->version != filter->version)) {
-        return 0;
-    }
-    if ((filter->mask & NLOG3_FILTER_PAYLOAD_FORMAT) &&
-        (desc->payload_format != filter->payload_format)) {
-        return 0;
-    }
-
-    return 1;
-}
-
 static void
 nlog3_iterator_set(NLOG3_ITERATOR_T *it,
                    NLOG3_T *plog,
-                   const NLOG3_FILTER_T *filter,
                    uint32_t sector,
                    uint32_t sequence,
                    uint32_t addr,
@@ -648,9 +570,6 @@ nlog3_iterator_set(NLOG3_ITERATOR_T *it,
 {
     memset(it, 0, sizeof(*it));
     it->plog = plog;
-    if (filter) {
-        it->filter = *filter;
-    }
     it->sector = sector;
     it->sector_sequence = sequence;
     it->addr = addr;
@@ -658,11 +577,73 @@ nlog3_iterator_set(NLOG3_ITERATOR_T *it,
 }
 
 static int32_t
+nlog3_iterator_set_offset(NLOG3_ITERATOR_T *it,
+                          NLOG3_T *plog,
+                          uint32_t offset,
+                          uint32_t sequence,
+                          uint32_t allow_staged)
+{
+    NLOG3_SECTOR_HEADER_T sector_header;
+    NLOG3_RECORD_HEADER_T record_header;
+    uint32_t sector;
+    uint32_t addr;
+    uint32_t scan_type;
+    int32_t res;
+
+    if (offset == NLOG3_RECORD_OFFSET_NONE) {
+        return E_BOF;
+    }
+    if (((offset & (NLOG3_LOG_RECORD_ALIGN - 1U)) != 0U) ||
+        (plog->sectorsize == 0U)) {
+        return E_CORRUPT;
+    }
+
+    sector = offset / plog->sectorsize;
+    if (sector >= plog->sectorcount) {
+        return E_CORRUPT;
+    }
+
+    addr = plog->startaddr + offset;
+    if (addr < plog->startaddr) {
+        return E_CORRUPT;
+    }
+
+    res = nlog3_sector_header_read(plog, sector, &sector_header);
+    if (res == E_NOTFOUND) {
+        return E_BOF;
+    }
+    if (res != EOK) {
+        return res;
+    }
+    if (((sector_header.state != NLOG3_RECORD_STATE_VALID) &&
+         (!allow_staged ||
+          (sector_header.state != NLOG3_RECORD_STATE_STAGED))) ||
+        (sector_header.sequence != sequence)) {
+        return E_BOF;
+    }
+
+    res = nlog3_record_read(plog,
+                            sector,
+                            addr,
+                            &record_header,
+                            &scan_type);
+    if (res != EOK) {
+        return res;
+    }
+    if (scan_type != NLOG3_SCAN_RECORD) {
+        return E_CORRUPT;
+    }
+
+    nlog3_iterator_set(it, plog, sector, sequence, addr, &record_header);
+
+    return EOK;
+}
+
+static int32_t
 nlog3_sector_find_first(NLOG3_T *plog,
                         uint32_t sector,
                         uint32_t sequence,
                         uint32_t start_addr,
-                        const NLOG3_FILTER_T *filter,
                         NLOG3_ITERATOR_T *it)
 {
     uint32_t addr;
@@ -685,62 +666,12 @@ nlog3_sector_find_first(NLOG3_T *plog,
         if (scan_type != NLOG3_SCAN_RECORD) {
             return E_NOTFOUND;
         }
-        if (nlog3_filter_match(filter, &header.desc)) {
-            nlog3_iterator_set(it, plog, filter, sector, sequence,
-                               addr, &header);
-            return EOK;
-        }
-        addr += header.total_size;
+
+        nlog3_iterator_set(it, plog, sector, sequence, addr, &header);
+        return EOK;
     }
 
     return E_NOTFOUND;
-}
-
-static int32_t
-nlog3_sector_find_last_before(NLOG3_T *plog,
-                              uint32_t sector,
-                              uint32_t sequence,
-                              uint32_t before_addr,
-                              const NLOG3_FILTER_T *filter,
-                              NLOG3_ITERATOR_T *it)
-{
-    uint32_t addr;
-    uint32_t end;
-    uint32_t scan_type;
-    uint32_t found = 0U;
-    NLOG3_RECORD_HEADER_T header;
-    NLOG3_ITERATOR_T last;
-    int32_t res;
-
-    addr = nlog3_sector_data_start(plog, sector);
-    end = nlog3_sector_end(plog, sector);
-    if ((before_addr == 0U) || (before_addr > end)) {
-        before_addr = end;
-    }
-
-    while (addr < before_addr) {
-        res = nlog3_record_read(plog, sector, addr, &header, &scan_type);
-        if (res != EOK) {
-            return res;
-        }
-        if (scan_type != NLOG3_SCAN_RECORD) {
-            break;
-        }
-        if (nlog3_filter_match(filter, &header.desc)) {
-            nlog3_iterator_set(&last, plog, filter, sector, sequence,
-                               addr, &header);
-            found = 1U;
-        }
-        addr += header.total_size;
-    }
-
-    if (!found) {
-        return E_NOTFOUND;
-    }
-
-    *it = last;
-
-    return EOK;
 }
 
 static int32_t
@@ -854,6 +785,8 @@ nlog3_init(NLOG3_T *plog)
     NLOG3_SECTOR_SCAN_T scan;
     uint32_t newest_sector = 0U;
     uint32_t newest_sequence = 0U;
+    uint32_t tail_sequence = 0U;
+    uint32_t tail_found = 0U;
     uint32_t i;
     int32_t res;
 
@@ -861,11 +794,12 @@ nlog3_init(NLOG3_T *plog)
         return E_PARM;
     }
 
-    plog->id = 0U;
     plog->current_sector = 0U;
     plog->current_sequence = 0U;
     plog->staged_sector = NLOG3_SECTOR_NONE;
     plog->write_addr = 0U;
+    plog->last_record_offset = NLOG3_RECORD_OFFSET_NONE;
+    plog->last_record_sequence = 0U;
     plog->current_closed = 1U;
 
     res = nlog3_find_newest_current_sector(plog,
@@ -885,6 +819,17 @@ nlog3_init(NLOG3_T *plog)
             res = nlog3_sector_scan(plog, i, &scan);
             if (res != EOK) {
                 return res;
+            }
+            if ((header.state == NLOG3_RECORD_STATE_VALID) &&
+                scan.has_records) {
+                if (!tail_found ||
+                    nlog3_seq_after(header.sequence, tail_sequence)) {
+                    tail_sequence = header.sequence;
+                    plog->last_record_offset =
+                        nlog3_record_offset(plog, scan.last_record_addr);
+                    plog->last_record_sequence = header.sequence;
+                    tail_found = 1U;
+                }
             }
         } else if ((res != E_NOTFOUND) && (res != E_CORRUPT)) {
             return res;
@@ -921,7 +866,8 @@ nlog3_reset(NLOG3_T *plog)
         }
     }
 
-    plog->id = 0U;
+    plog->last_record_offset = NLOG3_RECORD_OFFSET_NONE;
+    plog->last_record_sequence = 0U;
 
     res = nlog3_sector_init(plog, 0U, 0U);
     if (res != EOK) {
@@ -931,19 +877,14 @@ nlog3_reset(NLOG3_T *plog)
     return nlog3_ensure_staged_sector(plog);
 }
 
-uint32_t
-nlog3_get_id(NLOG3_T *plog)
-{
-    return plog ? plog->id : 0U;
-}
-
 int32_t
 nlog3_append(NLOG3_T *plog,
-             const NLOG3_EVENT_DESC_T *desc,
+             const NLOG3_RECORD_DESC_T *desc,
              const void *payload)
 {
     NLOG3_RECORD_HEADER_T header;
     uint32_t record_size;
+    uint32_t record_addr;
     uint32_t sector_end;
     uint32_t payload_crc;
     int32_t res;
@@ -991,6 +932,7 @@ nlog3_append(NLOG3_T *plog,
         return E_PARM;
     }
 
+    record_addr = plog->write_addr;
     payload_crc = (desc->payload_size == 0U) ?
         nlog3_crc32(NULL, 0U) :
         nlog3_crc32(payload, desc->payload_size);
@@ -1000,6 +942,8 @@ nlog3_append(NLOG3_T *plog,
     header.total_size = record_size;
     header.header_crc = 0U;
     header.payload_crc = payload_crc;
+    header.previous_offset = plog->last_record_offset;
+    header.previous_sequence = plog->last_record_sequence;
     header.desc = *desc;
     header.header_crc = nlog3_record_header_crc(&header);
 
@@ -1029,23 +973,18 @@ nlog3_append(NLOG3_T *plog,
         return res;
     }
 
+    plog->last_record_offset = nlog3_record_offset(plog, record_addr);
+    plog->last_record_sequence = plog->current_sequence;
     plog->write_addr += record_size;
     plog->current_closed = 0U;
-    if (desc->id >= plog->id) {
-        plog->id = desc->id + 1U;
-    }
 
     return EOK;
 }
 
 int32_t
 nlog3_iterator_init(NLOG3_T *plog,
-                    const NLOG3_FILTER_T *filter,
                     NLOG3_ITERATOR_T *it)
 {
-    uint32_t sector = 0U;
-    uint32_t sequence = 0U;
-    uint32_t count;
     int32_t res;
 
     if (!nlog3_log_valid(plog) || !it) {
@@ -1054,36 +993,21 @@ nlog3_iterator_init(NLOG3_T *plog,
 
     memset(it, 0, sizeof(*it));
 
-    res = nlog3_find_newest_sector(plog, &sector, &sequence);
-    if (res != EOK) {
-        return (res == E_NOTFOUND) ? E_EMPTY : res;
+    if (plog->last_record_offset == NLOG3_RECORD_OFFSET_NONE) {
+        return E_EMPTY;
     }
 
-    for (count = 0U; count < plog->sectorcount; count++) {
-        res = nlog3_sector_find_last_before(plog,
-                                            sector,
-                                            sequence,
-                                            0U,
-                                            filter,
-                                            it);
-        if (res == EOK) {
-            return EOK;
-        }
-        if (res != E_NOTFOUND) {
-            return res;
-        }
-        res = nlog3_find_sector_before(plog, sequence, &sector, &sequence);
-        if (res != EOK) {
-            return E_EMPTY;
-        }
-    }
+    res = nlog3_iterator_set_offset(it,
+                                    plog,
+                                    plog->last_record_offset,
+                                    plog->last_record_sequence,
+                                    0U);
 
-    return E_EMPTY;
+    return (res == E_BOF) ? E_EMPTY : res;
 }
 
 int32_t
 nlog3_iterator_init_oldest(NLOG3_T *plog,
-                           const NLOG3_FILTER_T *filter,
                            NLOG3_ITERATOR_T *it)
 {
     uint32_t sector = 0U;
@@ -1107,7 +1031,6 @@ nlog3_iterator_init_oldest(NLOG3_T *plog,
                                       sector,
                                       sequence,
                                       0U,
-                                      filter,
                                       it);
         if (res == EOK) {
             return EOK;
@@ -1127,12 +1050,9 @@ nlog3_iterator_init_oldest(NLOG3_T *plog,
 int32_t
 nlog3_iterator_prev(NLOG3_ITERATOR_T *it)
 {
-    NLOG3_FILTER_T filter;
-    NLOG3_ITERATOR_T next_it;
+    NLOG3_SECTOR_HEADER_T sector_header;
     NLOG3_T *plog;
-    uint32_t sector;
-    uint32_t sequence;
-    uint32_t count;
+    uint32_t allow_staged;
     int32_t res;
 
     if (!it || !it->plog ||
@@ -1141,51 +1061,27 @@ nlog3_iterator_prev(NLOG3_ITERATOR_T *it)
     }
 
     plog = it->plog;
-    filter = it->filter;
 
-    res = nlog3_sector_find_last_before(plog,
-                                        it->sector,
-                                        it->sector_sequence,
-                                        it->addr,
-                                        &filter,
-                                        &next_it);
-    if (res == EOK) {
-        *it = next_it;
-        return EOK;
+    res = nlog3_sector_header_read(plog, it->sector, &sector_header);
+    if (res == E_NOTFOUND) {
+        return E_BOF;
     }
-    if (res != E_NOTFOUND) {
+    if (res != EOK) {
         return res;
     }
 
-    sector = it->sector;
-    sequence = it->sector_sequence;
-    for (count = 0U; count < plog->sectorcount; count++) {
-        res = nlog3_find_sector_before(plog, sequence, &sector, &sequence);
-        if (res != EOK) {
-            return E_BOF;
-        }
-        res = nlog3_sector_find_last_before(plog,
-                                            sector,
-                                            sequence,
-                                            0U,
-                                            &filter,
-                                            &next_it);
-        if (res == EOK) {
-            *it = next_it;
-            return EOK;
-        }
-        if (res != E_NOTFOUND) {
-            return res;
-        }
-    }
+    allow_staged = (sector_header.state == NLOG3_RECORD_STATE_STAGED) ? 1U : 0U;
 
-    return E_BOF;
+    return nlog3_iterator_set_offset(it,
+                                     plog,
+                                     it->header.previous_offset,
+                                     it->header.previous_sequence,
+                                     allow_staged);
 }
 
 int32_t
 nlog3_iterator_next(NLOG3_ITERATOR_T *it)
 {
-    NLOG3_FILTER_T filter;
     NLOG3_ITERATOR_T next_it;
     NLOG3_T *plog;
     uint32_t sector;
@@ -1200,14 +1096,12 @@ nlog3_iterator_next(NLOG3_ITERATOR_T *it)
     }
 
     plog = it->plog;
-    filter = it->filter;
     start_addr = it->addr + it->header.total_size;
 
     res = nlog3_sector_find_first(plog,
                                   it->sector,
                                   it->sector_sequence,
                                   start_addr,
-                                  &filter,
                                   &next_it);
     if (res == EOK) {
         *it = next_it;
@@ -1228,7 +1122,6 @@ nlog3_iterator_next(NLOG3_ITERATOR_T *it)
                                       sector,
                                       sequence,
                                       0U,
-                                      &filter,
                                       &next_it);
         if (res == EOK) {
             *it = next_it;
@@ -1244,7 +1137,7 @@ nlog3_iterator_next(NLOG3_ITERATOR_T *it)
 
 int32_t
 nlog3_iterator_desc(const NLOG3_ITERATOR_T *it,
-                    NLOG3_EVENT_DESC_T *desc)
+                    NLOG3_RECORD_DESC_T *desc)
 {
     if (!it || !desc || (it->header.state != NLOG3_RECORD_STATE_VALID)) {
         return E_PARM;
@@ -1314,10 +1207,4 @@ nlog3_iterator_read(const NLOG3_ITERATOR_T *it,
     }
 
     return (int32_t)copied;
-}
-
-uint32_t
-nlog3_iterator_id(const NLOG3_ITERATOR_T *it)
-{
-    return it ? it->header.desc.id : 0U;
 }
