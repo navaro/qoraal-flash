@@ -33,7 +33,11 @@
 #define FLASH_ERASE(start, end)          qoraal_flash_erase((start), (end))
 
 #define NLOG3_LOG_RECORD_ALIGN           8U
-#define NLOG3_SECTOR_VERSION             3U
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
+#define NLOG3_SECTOR_VERSION             5U
+#else
+#define NLOG3_SECTOR_VERSION             4U
+#endif
 #define NLOG3_RECORD_MAGIC               0x33474C4EU
 #define NLOG3_SECTOR_MAGIC               0x33534C4EU
 #define NLOG3_CRC32_POLY                 0xEDB88320U
@@ -361,6 +365,12 @@ nlog3_record_alloc_size(uint32_t payload_size)
                           payload_size);
 }
 
+static uint32_t
+nlog3_record_size_from_header(const NLOG3_RECORD_HEADER_T *header)
+{
+    return header ? nlog3_record_alloc_size(header->payload_size) : 0U;
+}
+
 static int32_t
 nlog3_record_read(NLOG3_T *plog,
                   uint32_t sector,
@@ -370,6 +380,7 @@ nlog3_record_read(NLOG3_T *plog,
 {
     uint32_t end;
     uint32_t state;
+    uint32_t record_size;
     int32_t res;
 
     if (!nlog3_log_valid(plog) || !scan_type ||
@@ -413,13 +424,11 @@ nlog3_record_read(NLOG3_T *plog,
         return res;
     }
 
+    record_size = nlog3_record_size_from_header(header);
     if ((header->state != NLOG3_RECORD_STATE_VALID) ||
         (header->magic != NLOG3_RECORD_MAGIC) ||
-        (header->total_size < sizeof(*header)) ||
-        ((header->total_size & (NLOG3_LOG_RECORD_ALIGN - 1U)) != 0U) ||
-        !nlog3_addr_has_room(addr, end, header->total_size) ||
-        (header->desc.payload_size >
-            (header->total_size - (uint32_t)sizeof(*header))) ||
+        (record_size == 0U) ||
+        !nlog3_addr_has_room(addr, end, record_size) ||
         (header->header_crc != nlog3_record_header_crc(header))) {
         *scan_type = NLOG3_SCAN_TERMINAL;
         return EOK;
@@ -469,7 +478,7 @@ nlog3_sector_scan(NLOG3_T *plog,
 
         scan->has_records = 1U;
         scan->last_record_addr = record_addr;
-        addr += header.total_size;
+        addr += nlog3_record_size_from_header(&header);
     }
 
     scan->terminal = NLOG3_SCAN_TERMINAL;
@@ -880,17 +889,20 @@ nlog3_reset(NLOG3_T *plog)
 int32_t
 nlog3_append(NLOG3_T *plog,
              const NLOG3_RECORD_DESC_T *desc,
+             uint32_t payload_size,
              const void *payload)
 {
     NLOG3_RECORD_HEADER_T header;
     uint32_t record_size;
     uint32_t record_addr;
     uint32_t sector_end;
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
     uint32_t payload_crc;
+#endif
     int32_t res;
 
     if (!nlog3_log_valid(plog) || !desc ||
-        ((desc->payload_size != 0U) && !payload)) {
+        ((payload_size != 0U) && !payload)) {
         return E_PARM;
     }
 
@@ -898,7 +910,7 @@ nlog3_append(NLOG3_T *plog,
         return E_NOTRDY;
     }
 
-    record_size = nlog3_record_alloc_size(desc->payload_size);
+    record_size = nlog3_record_alloc_size(payload_size);
     if (record_size == 0U) {
         return E_PARM;
     }
@@ -933,15 +945,20 @@ nlog3_append(NLOG3_T *plog,
     }
 
     record_addr = plog->write_addr;
-    payload_crc = (desc->payload_size == 0U) ?
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
+    payload_crc = (payload_size == 0U) ?
         nlog3_crc32(NULL, 0U) :
-        nlog3_crc32(payload, desc->payload_size);
+        nlog3_crc32(payload, payload_size);
+#endif
 
+    memset(&header, 0, sizeof(header));
     header.state = NLOG3_RECORD_STATE_PENDING;
     header.magic = NLOG3_RECORD_MAGIC;
-    header.total_size = record_size;
     header.header_crc = 0U;
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
     header.payload_crc = payload_crc;
+#endif
+    header.payload_size = payload_size;
     header.previous_offset = plog->last_record_offset;
     header.previous_sequence = plog->last_record_sequence;
     header.desc = *desc;
@@ -956,10 +973,10 @@ nlog3_append(NLOG3_T *plog,
         return res;
     }
 
-    if (desc->payload_size != 0U) {
+    if (payload_size != 0U) {
         res = FLASH_WRITE(plog->write_addr +
                           (uint32_t)sizeof(NLOG3_RECORD_HEADER_T),
-                          desc->payload_size,
+                          payload_size,
                           (const uint8_t *)payload);
         if (res != EOK) {
             plog->current_closed = 1U;
@@ -1096,7 +1113,7 @@ nlog3_iterator_next(NLOG3_ITERATOR_T *it)
     }
 
     plog = it->plog;
-    start_addr = it->addr + it->header.total_size;
+    start_addr = it->addr + nlog3_record_size_from_header(&it->header);
 
     res = nlog3_sector_find_first(plog,
                                   it->sector,
@@ -1153,13 +1170,17 @@ nlog3_iterator_read(const NLOG3_ITERATOR_T *it,
                     void *payload,
                     int32_t len)
 {
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
     uint8_t buf[32];
+#endif
     uint32_t payload_size;
     uint32_t payload_addr;
     uint32_t copy_len;
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
     uint32_t copied;
     uint32_t offset;
     uint32_t crc;
+#endif
     int32_t res;
 
     if (!it || !it->plog ||
@@ -1168,7 +1189,7 @@ nlog3_iterator_read(const NLOG3_ITERATOR_T *it,
         return E_PARM;
     }
 
-    payload_size = it->header.desc.payload_size;
+    payload_size = it->header.payload_size;
     if (len == 0) {
         return (int32_t)payload_size;
     }
@@ -1178,6 +1199,18 @@ nlog3_iterator_read(const NLOG3_ITERATOR_T *it,
 
     payload_addr = it->addr + (uint32_t)sizeof(NLOG3_RECORD_HEADER_T);
     copy_len = NLOG3_MIN((uint32_t)len, payload_size);
+    if (copy_len == 0U) {
+        return 0;
+    }
+
+#if !defined(CFG_NLOG3_PAYLOAD_CRC)
+    res = FLASH_READ(payload_addr, copy_len, (uint8_t *)payload);
+    if (res != EOK) {
+        return res;
+    }
+
+    return (int32_t)copy_len;
+#else
     copied = 0U;
     offset = 0U;
     crc = nlog3_crc32_begin();
@@ -1207,4 +1240,5 @@ nlog3_iterator_read(const NLOG3_ITERATOR_T *it,
     }
 
     return (int32_t)copied;
+#endif
 }

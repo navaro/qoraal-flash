@@ -34,6 +34,8 @@
 
 #include <stdint.h>
 
+#include "qoraal-flash/config.h"
+
 /*===========================================================================*/
 /* Record metadata storage shape.                                             */
 /*===========================================================================*/
@@ -42,7 +44,6 @@
 
 #pragma pack(1)
 typedef struct NLOG3_RECORD_DESC_S {
-    uint32_t payload_size;
     uint32_t user[NLOG3_RECORD_USER_WORDS];
 } NLOG3_RECORD_DESC_T;
 #pragma pack()
@@ -63,9 +64,12 @@ typedef struct NLOG3_RECORD_DESC_S {
 typedef struct NLOG3_RECORD_HEADER_S {
     uint32_t            state;
     uint32_t            magic;
-    uint32_t            total_size;
     uint32_t            header_crc;
+#if defined(CFG_NLOG3_PAYLOAD_CRC)
     uint32_t            payload_crc;
+    uint32_t            padding;
+#endif
+    uint32_t            payload_size;
     uint32_t            previous_offset;
     uint32_t            previous_sequence;
     NLOG3_RECORD_DESC_T desc;
@@ -109,6 +113,7 @@ int32_t  nlog3_reset(NLOG3_T *plog);
 
 int32_t  nlog3_append(NLOG3_T *plog,
                       const NLOG3_RECORD_DESC_T *desc,
+                      uint32_t payload_size,
                       const void *payload);
 
 int32_t  nlog3_iterator_init(NLOG3_T *plog,
