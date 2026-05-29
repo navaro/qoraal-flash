@@ -54,10 +54,10 @@ typedef struct NLOG3_RECORD_DESC_S {
 
 /* STAGED is used by sector headers; record headers commit as PENDING->VALID. */
 #define NLOG3_RECORD_STATE_EMPTY        ((uint32_t)0xFFFFFFFFU)
-#define NLOG3_RECORD_STATE_PENDING      ((uint32_t)0xFFFFFFFEU)
-#define NLOG3_RECORD_STATE_VALID        ((uint32_t)0xFFFFFFFCU)
-#define NLOG3_RECORD_STATE_STAGED       ((uint32_t)0xFFFFFFF8U)
-#define NLOG3_RECORD_STATE_SECTOR_END   ((uint32_t)0xFFFFFFF0U)
+#define NLOG3_RECORD_STATE_PENDING      ((uint32_t)0xFFFFFFF0U)
+#define NLOG3_RECORD_STATE_VALID        ((uint32_t)0xFFFFFF00U)
+#define NLOG3_RECORD_STATE_STAGED       ((uint32_t)0xFFFFF000U)
+#define NLOG3_RECORD_STATE_SECTOR_END   ((uint32_t)0xFFFF0000U)
 #define NLOG3_RECORD_OFFSET_NONE        UINT32_MAX
 
 #pragma pack(1)

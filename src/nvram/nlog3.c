@@ -34,9 +34,9 @@
 
 #define NLOG3_LOG_RECORD_ALIGN           8U
 #if defined(CFG_NLOG3_PAYLOAD_CRC)
-#define NLOG3_SECTOR_VERSION             5U
+#define NLOG3_SECTOR_VERSION             7U
 #else
-#define NLOG3_SECTOR_VERSION             4U
+#define NLOG3_SECTOR_VERSION             6U
 #endif
 #define NLOG3_RECORD_MAGIC               0x33474C4EU
 #define NLOG3_SECTOR_MAGIC               0x33534C4EU
