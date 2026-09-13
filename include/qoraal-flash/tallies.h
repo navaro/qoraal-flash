@@ -74,6 +74,14 @@ extern "C" {
 /** @brief Id space reserved per module. global id = module_id * this + local. */
 #define TALLIES_PER_MODULE              32
 
+/**
+ * @brief   Sentinel for an unregistered block.
+ * @note    Ids are uint16_t, so a project's module numbering has to keep
+ *          module_id * TALLIES_PER_MODULE below this. tallies_register()
+ *          enforces it.
+ */
+#define TALLIES_BASE_NONE               ((uint16_t)0xFFFF)
+
 #ifdef NDEBUG
 #define TALLIES_PERSIST_INTERVAL        (60*60*5)
 #else
@@ -146,12 +154,12 @@ typedef struct TALLIES_BLOCK_S {
     TALLIES_ENTRY_T *           entry ;
     uint8_t *                   dirty ;
     uint16_t                    count ;
-    int32_t                     base ;  /**< @brief absolute id base, -1 = unregistered */
+    uint16_t                    base ;  /**< @brief absolute id base, TALLIES_BASE_NONE when unregistered */
 
 } TALLIES_BLOCK_T ;
 
 #define TALLIES_BLOCK_INIT(name_, defs_, entry_, dirty_, count_)               \
-        { 0, name_, defs_, entry_, dirty_, (uint16_t)(count_), -1 }
+        { 0, name_, defs_, entry_, dirty_, (uint16_t)(count_), TALLIES_BASE_NONE }
 
 /** @brief Size of the stored payload: the name followed by the entry. */
 #define TALLIES_RECORD_DATA_SIZE        (TALLIES_MAX_NAME_LEN + \

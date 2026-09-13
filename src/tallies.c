@@ -101,7 +101,8 @@ tallies_ready (TALLIES_BLOCK_T * blk, uint16_t local)
      * into RAM whether or not the volume is up, and gets written out when and
      * if it comes up.
      */
-    if (!_tallies_inst || !blk || (local >= blk->count) || (blk->base < 0)) {
+    if (!_tallies_inst || !blk || (local >= blk->count) ||
+            (blk->base == TALLIES_BASE_NONE)) {
         return E_PARM ;
     }
 
@@ -175,16 +176,16 @@ block_find (TALLIES_BLOCK_T * blk)
 }
 
 static TALLIES_BLOCK_T *
-block_find_overlap (const TALLIES_BLOCK_T * blk, int32_t base)
+block_find_overlap (const TALLIES_BLOCK_T * blk, uint32_t base)
 {
     TALLIES_BLOCK_T * entry ;
 
     for (entry = _tallies_blocks; entry; entry = entry->next) {
-        if (entry == blk) {
+        if ((entry == blk) || (entry->base == TALLIES_BASE_NONE)) {
             continue ;
         }
-        if ((base < entry->base + (int32_t)entry->count) &&
-            (entry->base < base + (int32_t)blk->count)) {
+        if ((base < (uint32_t)entry->base + entry->count) &&
+            ((uint32_t)entry->base < base + blk->count)) {
             return entry ;
         }
     }
@@ -288,7 +289,7 @@ tallies_persist_bounded (uint32_t all, uint32_t max)
     for (blk = _tallies_blocks; blk; blk = blk->next) {
         uint16_t local ;
 
-        if (blk->base < 0) {
+        if (blk->base == TALLIES_BASE_NONE) {
             continue ;
         }
 
@@ -440,7 +441,7 @@ tallies_start (void)
     os_mutex_lock (&_tallies_mutex) ;
     _tallies_paused = 0 ;
     for (blk = _tallies_blocks; blk; blk = blk->next) {
-        if (blk->base >= 0) {
+        if (blk->base != TALLIES_BASE_NONE) {
             block_load (blk) ;
         }
     }
@@ -537,8 +538,14 @@ tallies_register (TALLIES_BLOCK_T * blk, int32_t base)
     TALLIES_BLOCK_T * clash ;
     uint16_t local ;
 
+    /*
+     * The id is a uint16_t, so the whole range a block claims has to fit below
+     * the unregistered sentinel. A project's module numbering is what has to
+     * respect that; this is where it is caught if it does not.
+     */
     if (!blk || !blk->name || !blk->defs || !blk->entry || !blk->dirty ||
-            !blk->count || (base < 0)) {
+            !blk->count || (base < 0) ||
+            ((uint32_t)base + blk->count > TALLIES_BASE_NONE)) {
         DBG_MESSAGE_TALLIES (DBG_MESSAGE_SEVERITY_ERROR,
                 "TALY  :E: register '%s' base %d invalid res=%d",
                 (blk && blk->name) ? blk->name : "(null)", base, E_PARM) ;
@@ -556,18 +563,18 @@ tallies_register (TALLIES_BLOCK_T * blk, int32_t base)
     }
 
     if (block_find (blk)) {
-        return (blk->base == base) ? EOK : E_BUSY ;
+        return (blk->base == (uint16_t)base) ? EOK : E_BUSY ;
     }
 
-    clash = block_find_overlap (blk, base) ;
+    clash = block_find_overlap (blk, (uint32_t)base) ;
     if (clash) {
         DBG_MESSAGE_TALLIES (DBG_MESSAGE_SEVERITY_ERROR,
                 "TALY  :E: register '%s' base %d overlaps '%s' base %d res=%d",
-                blk->name, base, clash->name, clash->base, E_BUSY) ;
+                blk->name, base, clash->name, (int32_t)clash->base, E_BUSY) ;
         return E_BUSY ;
     }
 
-    blk->base = base ;
+    blk->base = (uint16_t)base ;
     blk->next = 0 ;
 
     if (_tallies_blocks) {
@@ -612,7 +619,7 @@ tallies_unregister (TALLIES_BLOCK_T * blk)
             }
 
             entry->next = 0 ;
-            entry->base = -1 ;
+            entry->base = TALLIES_BASE_NONE ;
             return EOK ;
         }
 

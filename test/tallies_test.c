@@ -261,6 +261,12 @@ test_overlapping_base_rejected (void)
             "overlapping base accepted") ;
     CHECK (tallies_register (&_alt_tallies, MOD_BASE) == EOK,
             "non-overlapping base rejected") ;
+
+    /* ids are uint16_t, so a block may not run into the sentinel */
+    CHECK (tallies_unregister (&_alt_tallies) == EOK, "unregister alt") ;
+    CHECK (tallies_register (&_alt_tallies, TALLIES_BASE_NONE - 1) != EOK,
+            "base running past the id space accepted") ;
+    CHECK (tallies_register (&_alt_tallies, -1) != EOK, "negative base accepted") ;
 }
 
 /*
