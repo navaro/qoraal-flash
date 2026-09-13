@@ -429,9 +429,13 @@ nvol3_record_delete (NVOL3_INSTANCE_T* instance, NVOL3_RECORD_T *record)
         NVOL3_ENTRY_T* entry =
                 (NVOL3_ENTRY_T*)dictionary_get_value(instance->dict, m) ;
         uint16_t idx = entry->idx ;
-        set_variable_record_flags (instance,  instance->sector,
-                NVOL3_RECORD_FLAGS_INVALID, idx ) ;
-        instance->inuse-- ;
+        int32_t status = set_variable_record_flags (instance,
+                instance->sector, NVOL3_RECORD_FLAGS_INVALID, idx ) ;
+        if (status != EOK) {
+            /* still VALID on FLASH: it would come back on the next load */
+            return status ;
+        }
+        if (instance->inuse) instance->inuse-- ;
         instance->invalid++ ;
 
         dictionary_remove(instance->dict, (const char*)record->key_and_data) ;
@@ -993,6 +997,10 @@ read_variable_record (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T *rec,
             (config->record_size - sizeof (NVOL3_RECORD_HEAD_T))) ) {
         return E_UNKNOWN ;
     }
+    /* length covers key + data: shorter underflows in insert_lookup_table() */
+    if (rec->head.length < config->key_size) {
+        return E_UNKNOWN ;
+    }
     if (rec->head.length) {
         offset += sizeof (NVOL3_RECORD_HEAD_T) ;
         if (bytes == 0) bytes = rec->head.length ;
@@ -1098,6 +1106,7 @@ static int32_t
 construct_lookup_table ( NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
 {
     uint16_t idx   = 0 ;
+    uint16_t next  = 0 ;
     int32_t status = 0 ;
     const NVOL3_CONFIG_T    *   config = instance->config ;
 
@@ -1106,14 +1115,24 @@ construct_lookup_table ( NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
     instance->invalid = 0 ;
     instance->error = 0 ;
 
+    /*
+     * An erased slot is a hole left by a failed write, not the end of the
+     * volume, so scan all of them; "next" tracks the slot after the last one
+     * used. The scan must stay ascending: when a crash leaves two VALID
+     * records for one key, insert_lookup_table() removes before it installs,
+     * so the higher slot - the newer record - wins.
+     */
     while (idx < max_records(instance)) {
-        if ((status = read_variable_record (instance, scratch,  idx, 0))
-                == E_EMPTY) {
-          /* last record */
+        status = read_variable_record (instance, scratch,  idx, 0) ;
+        if (status == E_EMPTY) {
+          idx++ ;
           status = EOK ;
-          break ;
+          continue ;
         }
-        else if (status == E_TIMEOUT) {
+
+        next = idx + 1 ;
+
+        if (status == E_TIMEOUT) {
           idx++ ;
           instance->invalid++ ;
           status = EOK ;
@@ -1161,7 +1180,7 @@ construct_lookup_table ( NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
         idx++ ;
     }
 
-    instance->next_idx = idx ;
+    instance->next_idx = next ;
     instance->version = get_sector_version (config, instance->sector, 0) ;
     if (instance->version != config->version) {
         return E_VERSION ;
@@ -1239,7 +1258,14 @@ move_sector ( NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch,
               DBG_MESSAGE_NVOL3 (DBG_MESSAGE_SEVERITY_ERROR,
                       "NVOL3 :E: '%s' move error write dst sector!",
                       config->name) ;
-              //return status ;
+              /*
+               * Mark the slot invalid rather than leaving it erased: this
+               * sector becomes the source on the next move, and the scan
+               * above stops at the first erased slot, so every record after
+               * it would be lost. One record is lost, not the tail.
+               */
+              set_variable_record_flags (instance, dst_addr,
+                      NVOL3_RECORD_FLAGS_INVALID, dst_idx) ;
           } else {
               cnt++ ;
           }
@@ -1303,7 +1329,7 @@ static int32_t
 swap_sectors (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
 {
     uint32_t src_addr, dst_addr ;
-    int32_t status ;
+    int32_t status = EOK ;  /* not set if the dictionary is empty */
     uint32_t sector_flags;
     uint16_t dst_idx = 0 ;
     struct dlist * m ;
