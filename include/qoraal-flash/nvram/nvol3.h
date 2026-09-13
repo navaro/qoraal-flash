@@ -237,17 +237,6 @@ extern "C" {
     const char *    nvol3_record_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
 
     /*
-     * API to access records from RAM and persist only on demand. locel_size should be same as data_size!
-     */
-    int32_t         nvol3_entry_first (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
-    int32_t         nvol3_entry_next (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
-    int32_t         nvol3_entry_at (NVOL3_INSTANCE_T* instance, const char * key, NVOL3_ITERATOR_T * it) ;
-    const char *    nvol3_entry_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
-    int32_t         nvol3_entry_data (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it, char ** data) ;
-    int32_t         nvol3_entry_save (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
-    int32_t         nvol3_entry_delete (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
-
-    /*
      * print the status of the nvol to the debug output.
      */
     void            nvol3_entry_log_status (NVOL3_INSTANCE_T* instance, uint32_t verbose) ;
