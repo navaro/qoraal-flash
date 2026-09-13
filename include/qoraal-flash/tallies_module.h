@@ -33,7 +33,7 @@
  * tallies_lst.h, but it belongs to the module:
  *
  * @code
- *   // example_tallies_lst.h
+ *   // include/My-Module/example_tallies_lst.h
  *   TALLIE_DEF       (started)
  *   TALLIE_DEF       (tick)
  *   TALLIE_DEF_RATE  (poll, SECONDS_TEN)
@@ -44,11 +44,17 @@
  * @code
  *   // example_tallies.h
  *   #define TALLIES_MODULE      example
- *   #define TALLIES_MODULE_LIST "example_tallies_lst.h"
+ *   #define TALLIES_MODULE_LIST "My-Module/example_tallies_lst.h"
  *   #include "qoraal-flash/tallies_module.h"
  *
  *   #define EXAMPLE_TALLIE_INC(x)  TALLIES_INC(example, x)
  * @endcode
+ *
+ * @note The #include of the list file is in THIS header, not in the module, so
+ *       a quoted path is resolved relative to qoraal-flash/include first and
+ *       then along the include path - never relative to the module's source
+ *       directory. Put the list under a directory the module already exports
+ *       (its include/ tree) and name it from there, as above.
  *
  * and exactly one .c defines it:
  *

@@ -194,6 +194,11 @@ typedef struct TALLIES_BLOCK_S {
      * module numbering. Works before or after tallies_start(): a block
      * registered first is populated by tallies_start(), a block registered
      * later is populated immediately.
+     *
+     * It is also safe before tallies_init() - a module registers at service
+     * CTRL_INIT, which can run before the application has handed the volume
+     * over - because registering only appends to a list. Counting into a
+     * block does need tallies_init(), and returns E_PARM until then.
      */
     int32_t     tallies_register (TALLIES_BLOCK_T * blk, int32_t base) ;
     int32_t     tallies_unregister (TALLIES_BLOCK_T * blk) ;
