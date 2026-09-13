@@ -109,17 +109,16 @@ tallies_ready (TALLIES_BLOCK_T * blk, uint16_t local)
 }
 
 /**
- * @brief   Ready, and not inside the rate limit window.
- * @note    Only inc and add go through this. Rate limiting a set, a clear or a
+ * @brief   EOK if this entry may be counted, E_BUSY if it is still inside its
+ *          rate limit window.
+ * @note    Only inc and add consult it. Rate limiting a set, a clear or a
  *          timer stop would silently drop a deliberate write.
+ * @note    Called with the mutex held: it reads the timestamp that every
+ *          other mutation writes.
  */
 static int32_t
-tallies_check (TALLIES_BLOCK_T * blk, uint16_t local)
+rate_limited_locked (TALLIES_BLOCK_T * blk, uint16_t local)
 {
-    if (tallies_ready (blk, local) != EOK) {
-        return E_PARM ;
-    }
-
     if (blk->defs[local].seconds) {
         RTCLIB_DATE_T date ;
         RTCLIB_TIME_T time ;
@@ -132,7 +131,7 @@ tallies_check (TALLIES_BLOCK_T * blk, uint16_t local)
 
         if (rtc_seconds_diff (blk->entry[local].time, time) <
                     blk->defs[local].seconds) {
-            return EFAIL ;
+            return E_BUSY ;
         }
     }
 
@@ -637,17 +636,23 @@ tallies_inc (TALLIES_BLOCK_T * blk, uint16_t local)
 int32_t
 tallies_add (TALLIES_BLOCK_T * blk, uint16_t local, uint32_t value)
 {
-    if (tallies_check (blk, local) != EOK) {
+    int32_t status ;
+
+    if (tallies_ready (blk, local) != EOK) {
         return E_PARM ;
     }
 
     os_mutex_lock (&_tallies_mutex) ;
-    rtc_localtime (rtc_time(), &blk->entry[local].date, &blk->entry[local].time) ;
-    blk->entry[local].value += value ;
-    blk->dirty[local] = TALLIES_DIRTY_VALUE ;
+    status = rate_limited_locked (blk, local) ;
+    if (status == EOK) {
+        rtc_localtime (rtc_time(), &blk->entry[local].date,
+                        &blk->entry[local].time) ;
+        blk->entry[local].value += value ;
+        blk->dirty[local] = TALLIES_DIRTY_VALUE ;
+    }
     os_mutex_unlock (&_tallies_mutex) ;
 
-    return EOK ;
+    return status ;
 }
 
 int32_t

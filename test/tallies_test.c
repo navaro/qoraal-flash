@@ -277,7 +277,8 @@ test_rate_limit (void)
     CHECK (tallies_start () == EOK, "start") ;
 
     CHECK (TALLIES_INC(mod, poll) == EOK, "first inc") ;
-    CHECK (TALLIES_INC(mod, poll) != EOK, "second inc inside the window") ;
+    CHECK (TALLIES_INC(mod, poll) == E_BUSY,
+            "second inc inside the window should report E_BUSY") ;
     CHECK (TALLIES_GET(mod, poll) == 1, "poll %u, expected 1",
             (unsigned)TALLIES_GET(mod, poll)) ;
 

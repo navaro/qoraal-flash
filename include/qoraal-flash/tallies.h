@@ -204,8 +204,9 @@ typedef struct TALLIES_BLOCK_S {
     int32_t     tallies_unregister (TALLIES_BLOCK_T * blk) ;
 
     /*
-     * Counters. inc/add honour the rate limit from TALLIE_DEF_RATE; set and
-     * clear do not, so a deliberate write is never dropped.
+     * Counters. inc/add honour the rate limit from TALLIE_DEF_RATE and return
+     * E_BUSY when they are inside the window; set and clear do not, so a
+     * deliberate write is never dropped.
      */
     int32_t     tallies_inc (TALLIES_BLOCK_T * blk, uint16_t local) ;
     int32_t     tallies_add (TALLIES_BLOCK_T * blk, uint16_t local, uint32_t value) ;
