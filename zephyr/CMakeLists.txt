@@ -27,6 +27,12 @@ zephyr_library_sources_ifdef(CONFIG_QORAAL_FLASH
 
 )
 
+zephyr_library_sources_ifdef(CONFIG_QORAAL_FLASH_TALLIES
+    ${CMAKE_CURRENT_LIST_DIR}/../src/tallies.c
+    ${CMAKE_CURRENT_LIST_DIR}/../src/qshell/talliescmd.c
+
+)
+
 # Optional compile defs (keep minimal for now)
 zephyr_compile_definitions(
     CFG_OS_ZEPHYR=1

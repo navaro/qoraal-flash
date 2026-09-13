@@ -4,4 +4,13 @@ config QORAAL_FLASH
     bool "Enable Qoraal-flash framework"
     default n
 
+config QORAAL_FLASH_TALLIES
+    bool "Enable persistent tallies (counters)"
+    depends on QORAAL_FLASH
+    default n
+    help
+      Per-module counters persisted to an application owned nvol3 volume.
+      When disabled the TALLIES_* accessors compile to no-ops, so module
+      source does not change.
+
 endmenu

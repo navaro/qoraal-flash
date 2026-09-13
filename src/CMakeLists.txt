@@ -9,6 +9,8 @@ set(FLASH_SRC
     regenum.c
     syslog.c
     qoraal.c
+    tallies.c
+    qshell/talliescmd.c
 )
 
 
