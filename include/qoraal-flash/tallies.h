@@ -303,7 +303,16 @@ typedef struct TALLIES_BLOCK_S {
 /*
  * Compiled out. tallies_module.h generates nothing and the accessors become
  * no-ops, so module source needs no #ifdef of its own.
+ *
+ * The lifecycle is stubbed rather than removed for the same reason: it is
+ * wired into qoraal_flash_start_default() alongside the registry and the
+ * syslog, and that sequence should not have to know whether this is built.
  */
+static inline int32_t tallies_init (NVOL3_INSTANCE_T * inst)
+                                                { (void)inst ; return EOK ; }
+static inline int32_t tallies_start (void)      { return EOK ; }
+static inline void    tallies_stop (void)       { }
+
 #define TALLIES_INC(mod, x)             ((void)0)
 #define TALLIES_ADD(mod, x, value)      ((void)0)
 #define TALLIES_SET(mod, x, value)      ((void)0)

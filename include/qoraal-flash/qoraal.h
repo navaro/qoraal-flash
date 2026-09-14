@@ -78,8 +78,40 @@ extern const QORAAL_FLASH_CFG_T *_qoraal_flash_instance;
 extern "C" {
 #endif
 
+/**
+ * @brief   Hand over the volumes this library persists to and bring it up.
+ *
+ * The application owns the storage: it declares each volume against its own
+ * partition and hands it over here. Pass 0 for one it does not use.
+ *
+ * This is the registry and syslog form, kept for callers that predate the
+ * tallies volume; it is qoraal_flash_init_default_ex() with no tallies.
+ */
 int32_t     qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance, NVOL3_INSTANCE_T * registry, SYSLOG_INSTANCE_T * syslog);
+
+/**
+ * @brief   As qoraal_flash_init_default(), plus the tallies volume.
+ *
+ * @p tallies may be 0 whether or not CONFIG_QORAAL_FLASH_TALLIES is set; with
+ * the feature off the whole lifecycle compiles to nothing, and with it on a
+ * volume that was never handed over simply leaves the counters in RAM.
+ *
+ * There is no matching start_ex or stop_ex: those take no arguments, and
+ * they carry the tallies lifecycle whether or not a volume was handed over -
+ * both calls are a no-op when it was not.
+ */
+int32_t     qoraal_flash_init_default_ex (const QORAAL_FLASH_CFG_T * instance, NVOL3_INSTANCE_T * registry, SYSLOG_INSTANCE_T * syslog, NVOL3_INSTANCE_T * tallies);
+
 int32_t     qoraal_flash_start_default (void);
+
+/**
+ * @brief   Flush and unload every volume. Mirrors the start, reversed.
+ *
+ * Call it before a reset, after the services have been halted, so that what
+ * they counted and logged on the way down reaches FLASH. A reset that does
+ * not come through here - a watchdog, a brownout - loses whatever the
+ * periodic passes had not yet written.
+ */
 int32_t     qoraal_flash_stop_default (void);
 
 int32_t     qoraal_flash_instance_init (const QORAAL_FLASH_CFG_T * instance);

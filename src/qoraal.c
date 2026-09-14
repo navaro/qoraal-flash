@@ -28,6 +28,7 @@
 #include "qoraal-flash/qoraal.h"
 #include "qoraal-flash/registry.h"
 #include "qoraal-flash/syslog.h"
+#include "qoraal-flash/tallies.h"
 
 
 const QORAAL_FLASH_CFG_T *_qoraal_flash_instance = 0 ;
@@ -44,9 +45,18 @@ qoraal_flash_instance_init (const QORAAL_FLASH_CFG_T * instance)
 }
 
 int32_t
-qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance, 
+qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance,
                             NVOL3_INSTANCE_T * registry,
                             SYSLOG_INSTANCE_T * syslog)
+{
+    return qoraal_flash_init_default_ex (instance, registry, syslog, 0) ;
+}
+
+int32_t
+qoraal_flash_init_default_ex (const QORAAL_FLASH_CFG_T * instance,
+                            NVOL3_INSTANCE_T * registry,
+                            SYSLOG_INSTANCE_T * syslog,
+                            NVOL3_INSTANCE_T * tallies)
 {
     int32_t res = qoraal_flash_instance_init (instance) ;
     if (res != EOK) {
@@ -57,6 +67,7 @@ qoraal_flash_init_default (const QORAAL_FLASH_CFG_T * instance,
 
     registry_init (registry) ;
     syslog_init (syslog) ;
+    tallies_init (tallies) ;
 
 
     return EOK;
@@ -66,7 +77,8 @@ int32_t
 qoraal_flash_start_default (void)
 {
     registry_start () ;
-    syslog_start () ;    
+    syslog_start () ;
+    tallies_start () ;
 
     return EOK;
 }
@@ -74,8 +86,15 @@ qoraal_flash_start_default (void)
 int32_t
 qoraal_flash_stop_default (void)
 {
+    /*
+     * Tallies first. Stopping it banks the running timers and writes every
+     * dirty counter out, and it logs while doing so - which wants the syslog
+     * still up.
+     */
+    tallies_stop () ;
+
     registry_stop () ;
-    syslog_stop () ;    
+    syslog_stop () ;
 
     return EOK;
 }
