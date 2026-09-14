@@ -344,6 +344,50 @@ test_timer (void)
     tallies_stop () ;
 }
 
+/*
+ * Writing a running timer out must not disturb it. This is what the periodic
+ * pass does, and it is where a long running timer used to lose its interval:
+ * the pass banked what had elapsed and re-based the start each time, so the
+ * interval it measured was never the one the timer had actually run.
+ */
+static void
+test_running_timer_persist (void)
+{
+    printf ("  test_running_timer_persist\n") ;
+    tv_fresh () ;
+
+    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
+    CHECK (tallies_start () == EOK, "start") ;
+
+    CHECK (TALLIES_START_TIMER(sys, uptime) == EOK, "start timer") ;
+
+    /* Three snapshots, the way the periodic pass would take them. */
+    _test_now += 100 ;
+    tallies_persist (1) ;
+    _test_now += 100 ;
+    tallies_persist (1) ;
+    _test_now += 100 ;
+    tallies_persist (1) ;
+
+    /* Still measured from the original start, and nothing banked twice. */
+    CHECK (TALLIES_GET(sys, uptime) == 300, "running timer %u, expected 300",
+            (unsigned)TALLIES_GET(sys, uptime)) ;
+
+    CHECK (TALLIES_STOP_TIMER(sys, uptime) == EOK, "stop timer") ;
+    CHECK (TALLIES_GET(sys, uptime) == 300, "stopped timer %u, expected 300",
+            (unsigned)TALLIES_GET(sys, uptime)) ;
+
+    tallies_stop () ;
+
+    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "re-register") ;
+    CHECK (tallies_start () == EOK, "restart") ;
+    CHECK (TALLIES_GET(sys, uptime) == 300,
+            "uptime %u after reload, expected 300",
+            (unsigned)TALLIES_GET(sys, uptime)) ;
+
+    tallies_stop () ;
+}
+
 /* Out of range ids are rejected rather than read past the end of the block. */
 static void
 test_bounds (void)
@@ -433,6 +477,7 @@ main (void)
     test_overlapping_base_rejected () ;
     test_rate_limit () ;
     test_timer () ;
+    test_running_timer_persist () ;
     test_bounds () ;
     test_reset () ;
     test_counts_before_start () ;

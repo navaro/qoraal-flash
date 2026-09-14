@@ -72,7 +72,6 @@ static TALLIES_BLOCK_T *    _tallies_blocks = 0 ;
 static uint32_t             _tallies_started = 0 ;
 static uint32_t             _tallies_paused = 0 ;
 static uint32_t             _tallies_mismatched = 0 ;
-static uint32_t             _tallies_timer_drops = 0 ;
 static p_mutex_t            _tallies_mutex = 0 ;
 
 /*
@@ -260,6 +259,18 @@ block_persist_locked (TALLIES_BLOCK_T * blk, uint16_t local)
     name_canonical (blk->defs[local].name, record->data.name) ;
     record->data.entry = blk->entry[local] ;
 
+    /*
+     * A running timer is stored as a snapshot: what it has banked, plus what
+     * has run since it started. Only the record is adjusted - the entry in
+     * RAM keeps its start time - so writing it out neither moves the start
+     * nor double counts, and stopping the timer later still measures the
+     * whole interval from where it actually began.
+     */
+    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
+        record->data.entry.value += rtc_seconds_elapsed (
+                        blk->entry[local].date, blk->entry[local].time) ;
+    }
+
     return nvol3_record_set (_tallies_inst, (NVOL3_RECORD_T *)record,
                     TALLIES_RECORD_LEN) ;
 }
@@ -300,33 +311,14 @@ tallies_persist_bounded (uint32_t all, uint32_t max)
                 continue ;
             }
 
-            if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-                uint32_t seconds ;
-
-                if (!all) {
-                    continue ;
-                }
-
-                seconds = rtc_seconds_elapsed (blk->entry[local].date,
-                                blk->entry[local].time) ;
-                if (!seconds) {
-                    continue ;
-                }
-
-                /*
-                 * An interval longer than the persist period cannot have come
-                 * from a timer this pass would have sampled: the clock was
-                 * stepped, or the store was down. Counting it would corrupt
-                 * the total, so it is dropped - and counted, so that the drop
-                 * is visible in "tallies" rather than silent.
-                 */
-                if (seconds < TALLIES_PERSIST_INTERVAL*2/3) {
-                    blk->entry[local].value += seconds ;
-                } else {
-                    _tallies_timer_drops++ ;
-                }
-                rtc_localtime (rtc_time(), &blk->entry[local].date,
-                                &blk->entry[local].time) ;
+            /*
+             * A running timer is never updated in place - the value it has
+             * banked only changes when it is stopped or paused. All this pass
+             * does is write a snapshot of it, which block_persist_locked()
+             * composes, and only when asked for one.
+             */
+            if ((blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) && !all) {
+                continue ;
             }
 
             /*
@@ -450,7 +442,7 @@ tallies_start (void)
 
     svc_tasks_cancel (&_tallies_task) ;
     svc_tasks_schedule (&_tallies_task, tallies_cb, 0, SERVICE_PRIO_QUEUE3,
-            SVC_TASK_S2TICKS(TALLIES_PERSIST_INTERVAL)) ;
+            SVC_TASK_S2TICKS(TALLIES_PERSIST_INTERVAL_START)) ;
 
     return status ;
 }
@@ -520,7 +512,6 @@ tallies_reset (void)
     }
 
     _tallies_mismatched = 0 ;
-    _tallies_timer_drops = 0 ;
 
     os_mutex_unlock (&_tallies_mutex) ;
 
@@ -725,16 +716,17 @@ static int32_t
 stop_timer_locked (TALLIES_BLOCK_T * blk, uint16_t local)
 {
     if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-        uint32_t seconds = rtc_seconds_elapsed (blk->entry[local].date,
-                        blk->entry[local].time) ;
+        /*
+         * The timestamp is the start, untouched since the timer began, so
+         * this is the whole interval and there is nothing to reconstruct.
+         * rtc_seconds_elapsed() returns 0 for a start in the future, which is
+         * what a clock stepped backwards under a running timer looks like.
+         * A step forwards is what tallies_timers_pause() is for.
+         */
+        blk->entry[local].value += rtc_seconds_elapsed (
+                        blk->entry[local].date, blk->entry[local].time) ;
 
-        /* See tallies_persist_bounded() for why a long interval is dropped. */
-        if (seconds < TALLIES_PERSIST_INTERVAL*2/3) {
-            blk->entry[local].value += seconds ;
-        } else {
-            _tallies_timer_drops++ ;
-        }
-
+        /* From here the timestamp means "when it last changed" again. */
         rtc_localtime (rtc_time(), &blk->entry[local].date,
                         &blk->entry[local].time) ;
         blk->dirty[local] = TALLIES_DIRTY_VALUE ;
@@ -879,12 +871,6 @@ uint32_t
 tallies_mismatched (void)
 {
     return _tallies_mismatched ;
-}
-
-uint32_t
-tallies_timer_drops (void)
-{
-    return _tallies_timer_drops ;
 }
 
 void

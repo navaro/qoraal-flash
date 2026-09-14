@@ -82,11 +82,29 @@ extern "C" {
  */
 #define TALLIES_BASE_NONE               ((uint16_t)0xFFFF)
 
-#ifdef NDEBUG
-#define TALLIES_PERSIST_INTERVAL        (60*60*5)
+/**
+ * @brief   How often the periodic pass writes dirty entries out.
+ *
+ * This is what bounds the history lost to a reset that cannot run code - a
+ * watchdog expiry, a brownout, the reset pin. The software reset paths flush
+ * on the way down and are not bounded by it.
+ *
+ * Two hours is the trade: shorter costs FLASH wear on a volume whose sectors
+ * are erased in place, longer costs history on a reset nothing can intercept.
+ *
+ * A Zephyr build takes the value from Kconfig, so that it is visible in
+ * .config and settable per application rather than being a function of how
+ * the build happened to be optimised. The NDEBUG fallback is for the POSIX
+ * test builds, which have no Kconfig.
+ */
+#if defined CONFIG_QORAAL_FLASH_TALLIES_PERSIST_INTERVAL
+#define TALLIES_PERSIST_INTERVAL        CONFIG_QORAAL_FLASH_TALLIES_PERSIST_INTERVAL
+#elif defined NDEBUG
+#define TALLIES_PERSIST_INTERVAL        (60*60*2)
 #else
 #define TALLIES_PERSIST_INTERVAL        (60*2)
 #endif
+#define TALLIES_PERSIST_INTERVAL_START  (60)
 
 /** @brief Records written per persist pass before the task yields. */
 #define TALLIES_PERSIST_MAX_PER_PASS    16
@@ -109,7 +127,8 @@ extern "C" {
 
 /*
  * Per entry state. The state is four valued, so a plain dirty bit will not do:
- * a running timer has no value to write until it is sampled.
+ * a running timer holds its start in the timestamp rather than a value, and
+ * a paused one has already banked what it ran for.
  */
 #define TALLIES_CLEAN                   0
 #define TALLIES_DIRTY_VALUE             1
@@ -223,6 +242,13 @@ typedef struct TALLIES_BLOCK_S {
 
     /*
      * Timers. The tallie accumulates seconds between start and stop.
+     *
+     * Starting records the time and nothing else; the value only moves when
+     * the timer is stopped or paused, by the whole interval measured from
+     * that start. Nothing samples a running timer in the background, so a
+     * timer is as accurate as the clock it started against however long it
+     * runs, and restarting one that is already running is a no-op rather
+     * than a lost interval.
      */
     int32_t     tallies_start_timer (TALLIES_BLOCK_T * blk, uint16_t local) ;
     int32_t     tallies_stop_timer (TALLIES_BLOCK_T * blk, uint16_t local) ;
@@ -240,7 +266,12 @@ typedef struct TALLIES_BLOCK_S {
     int32_t     tallies_get (TALLIES_BLOCK_T * blk, uint16_t local, TALLIES_ENTRY_T * out) ;
     const char * tallies_name (TALLIES_BLOCK_T * blk, uint16_t local) ;
 
-    /* Write every dirty entry out. all != 0 also samples running timers. */
+    /*
+     * Write every dirty entry out. all != 0 also writes running timers, as a
+     * snapshot of what they have banked plus what has run since they started.
+     * The timers themselves are not touched, so a snapshot neither moves the
+     * start nor double counts against the eventual stop.
+     */
     void        tallies_persist (uint32_t all) ;
 
     /* Iteration for the shell and, later, the publishers. */
@@ -248,11 +279,10 @@ typedef struct TALLIES_BLOCK_S {
     TALLIES_BLOCK_T * tallies_block_next (TALLIES_BLOCK_T * cur) ;
 
     /*
-     * Counts records dropped on load because the stored name did not match the
-     * registered one, and timer intervals discarded as implausible.
+     * Counts records dropped on load because the stored name did not match
+     * the registered one.
      */
     uint32_t    tallies_mismatched (void) ;
-    uint32_t    tallies_timer_drops (void) ;
 
     void        tallies_log_status (void) ;
 

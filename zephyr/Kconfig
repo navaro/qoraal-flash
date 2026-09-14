@@ -13,4 +13,20 @@ config QORAAL_FLASH_TALLIES
       When disabled the TALLIES_* accessors compile to no-ops, so module
       source does not change.
 
+config QORAAL_FLASH_TALLIES_PERSIST_INTERVAL
+    int "Seconds between periodic tallie persists"
+    depends on QORAAL_FLASH_TALLIES
+    default 7200
+    help
+      How often the periodic pass writes dirty counters out.
+
+      This is what bounds the history lost to a reset that cannot run code -
+      a watchdog expiry, a brownout, the reset pin. The software reset paths
+      halt the services on the way down and flush then, so they are not
+      bounded by this.
+
+      Shorter costs FLASH wear on a volume whose sectors are erased in place;
+      longer costs history. Lower it while testing so that a periodic persist
+      can be observed without waiting hours for one.
+
 endmenu

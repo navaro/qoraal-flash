@@ -71,11 +71,10 @@ tallies_dump (SVC_SHELL_IF_T * pif, const char * filter)
     }
 
     svc_shell_print (pif, SVC_SHELL_OUT_STD,
-            SVC_SHELL_NEWLINE "%u tallies, %u reset on load, %u timer drops"
+            SVC_SHELL_NEWLINE "%u tallies, %u reset on load"
             SVC_SHELL_NEWLINE,
             (unsigned int)shown,
-            (unsigned int)tallies_mismatched(),
-            (unsigned int)tallies_timer_drops()) ;
+            (unsigned int)tallies_mismatched()) ;
 }
 
 int32_t qshell_cmd_tallies (SVC_SHELL_IF_T * pif, char** argv, int argc)
