@@ -256,9 +256,13 @@ extern "C" {
      * POINTER LIFETIME. A pointer from nvol3_entry_data(), and an
      * NVOL3_ITERATOR_T, are invalidated by either of:
      *
-     *  - a write to THAT key. record_set() calls insert_lookup_table(), which
-     *    removes and reinstalls the dictionary entry, so saving key K
-     *    invalidates K's pointer and iterator and nobody else's.
+     *  - a write to THAT key that changes the size of its cached value.
+     *    insert_lookup_table() updates the entry in place where the
+     *    allocation would not change size, and only removes and reinstalls -
+     *    freeing the NVOL3_ENTRY_T - where it would. nvol3_entry_save()
+     *    writes back the length it read, so it never changes the size and
+     *    never invalidates what the caller is holding; a nvol3_record_set()
+     *    that shortens or lengthens the value for that key does.
      *  - a sector swap that could not be written out of RAM. On a volume
      *    meeting the precondition above a swap rebuilds the destination from
      *    the dictionary, so nothing is freed and pointers survive it. Only

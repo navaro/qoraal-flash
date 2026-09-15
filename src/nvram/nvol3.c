@@ -1405,6 +1405,47 @@ insert_lookup_table (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* rec,
     unsigned int localsize = rec->head.length - config->key_size ;
     if (localsize > config->local_size) localsize = 0 ;
 
+    /*
+     * Update in place where the value allocation would not change size.
+     *
+     * Remove-and-reinstall frees the NVOL3_ENTRY_T, and that is what
+     * invalidates a caller's nvol3_entry_data() pointer and its iterator.
+     * Keeping the allocation means a save no longer does that -
+     * nvol3_entry_save() writes back the length it read, so it always takes
+     * this path and never invalidates what the caller is holding.
+     *
+     * The allocation is sizeof(NVOL3_ENTRY_T) + localsize, and localsize is a
+     * function of the entry's own length, so the existing entry is enough to
+     * decide - the dictionary has no value-size accessor and does not need
+     * one. Both lengths overflowing local_size is also a match: local[] holds
+     * nothing either way.
+     *
+     * The ascending-scan rule in construct_lookup_table() still holds. Where
+     * a crash left two VALID records for one key, the higher slot is seen
+     * last and wins, here by assigning entry->idx rather than by reinstalling.
+     */
+    m = dictionary_get (instance->dict, (char*)&rec->key_and_data) ;
+    if (m) {
+        NVOL3_ENTRY_T * existing =
+                (NVOL3_ENTRY_T*)dictionary_get_value (instance->dict, m) ;
+
+        if (existing) {
+            unsigned int had = existing->length ;
+            if (had > config->local_size) had = 0 ;
+
+            if (had == localsize) {
+                existing->idx    = idx ;
+                existing->length = rec->head.length - config->key_size ;
+                if (localsize) {
+                    memcpy (existing->local,
+                            &rec->key_and_data[config->key_size], localsize) ;
+                }
+
+                return EOK ;
+            }
+        }
+    }
+
     dictionary_remove (instance->dict, (char*)&rec->key_and_data) ;
     m = dictionary_install_size(instance->dict, (char*)&rec->key_and_data,
             sizeof(NVOL3_ENTRY_T) + localsize) ;
