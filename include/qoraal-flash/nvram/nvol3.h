@@ -237,52 +237,24 @@ extern "C" {
     const char *    nvol3_record_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
 
     /*
-     * API to read a record's data straight out of RAM and persist it on
-     * demand, rather than going to FLASH for every access.
+     * API to read a record's data in RAM and persist it on demand.
      *
-     * PRECONDITION. local_size must be at least as large as the data of every
-     * record the volume holds. Where a record does not fit,
-     * insert_lookup_table() allocates no local[] for it, and
-     * nvol3_entry_data() and nvol3_entry_save() return E_INVALID rather than
-     * read past the allocation. A volume that mixes the two - the registry
-     * caches 4 bytes of a 128 byte value - is a record-API volume; use
-     * nvol3_record_get() and nvol3_record_set() there.
+     * Requires local_size to cover the data of every record the volume holds.
+     * A record that does not fit has no cache, and nvol3_entry_data() and
+     * nvol3_entry_save() return E_INVALID rather than read past it; a volume
+     * caching only part of a value - the registry - is a record-API volume.
+     * Nothing here locks: serialise the instance externally.
      *
-     * LOCKING. Nothing here takes a lock, and an instance has to be
-     * serialised by its owner - see registry.c for the expected pattern.
-     * Every entry point that writes can trigger a sector swap, so concurrent
-     * access is not merely racy on the data: it will use freed memory.
+     * nvol3_entry_data() returns the data length, not EOK. Test it with < 0.
      *
-     * POINTER LIFETIME. A pointer from nvol3_entry_data(), and an
-     * NVOL3_ITERATOR_T, are invalidated by either of:
+     * A pointer from it, and an NVOL3_ITERATOR_T, survive nvol3_entry_save()
+     * and survive a swap written out of RAM. They do not survive a write that
+     * changes THAT key's cached size, nor the move_sector() recovery a FLASH
+     * error falls back to - which a caller cannot tell from a normal swap.
+     * Re-resolve with nvol3_entry_at() after any write you did not make.
      *
-     *  - a write to THAT key that changes the size of its cached value.
-     *    insert_lookup_table() updates the entry in place where the
-     *    allocation would not change size, and only removes and reinstalls -
-     *    freeing the NVOL3_ENTRY_T - where it would. nvol3_entry_save()
-     *    writes back the length it read, so it never changes the size and
-     *    never invalidates what the caller is holding; a nvol3_record_set()
-     *    that shortens or lengthens the value for that key does.
-     *  - a sector swap that could not be written out of RAM. On a volume
-     *    meeting the precondition above a swap rebuilds the destination from
-     *    the dictionary, so nothing is freed and pointers survive it. Only
-     *    the move_sector() recovery, which runs after a FLASH error and
-     *    returns the caller an error anyway, falls back to rebuilding the
-     *    lookup table from FLASH.
-     *
-     * Re-resolve with nvol3_entry_at() after either. nvol3_entry_save() does
-     * that for itself when its own write is what triggered the swap.
-     *
-     * One consequence worth knowing: because such a swap writes the volume
-     * out of RAM, it persists EVERY pending cached change, not just the one
-     * whose save triggered it. For a volume meeting the precondition the
-     * dictionary is the authority, so that is the correct thing to write -
-     * but a cached modification can reach FLASH without its own
-     * nvol3_entry_save().
-     *
-     * RETURN. nvol3_entry_data() returns the data length on success - a
-     * positive count, not EOK - and a negative error code otherwise. Test it
-     * with < 0, not != EOK.
+     * A swap written out of RAM persists every pending cached change, not
+     * only the one that triggered it.
      */
     int32_t         nvol3_entry_first (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
     int32_t         nvol3_entry_next (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
