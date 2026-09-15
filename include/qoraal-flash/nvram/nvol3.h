@@ -237,6 +237,48 @@ extern "C" {
     const char *    nvol3_record_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
 
     /*
+     * API to read a record's data straight out of RAM and persist it on
+     * demand, rather than going to FLASH for every access.
+     *
+     * PRECONDITION. local_size must be at least as large as the data of every
+     * record the volume holds. Where a record does not fit,
+     * insert_lookup_table() allocates no local[] for it, and
+     * nvol3_entry_data() and nvol3_entry_save() return E_INVALID rather than
+     * read past the allocation. A volume that mixes the two - the registry
+     * caches 4 bytes of a 128 byte value - is a record-API volume; use
+     * nvol3_record_get() and nvol3_record_set() there.
+     *
+     * LOCKING. Nothing here takes a lock, and an instance has to be
+     * serialised by its owner - see registry.c for the expected pattern.
+     * Every entry point that writes can trigger a sector swap, so concurrent
+     * access is not merely racy on the data: it will use freed memory.
+     *
+     * POINTER LIFETIME. A pointer from nvol3_entry_data(), and an
+     * NVOL3_ITERATOR_T, are invalidated by either of:
+     *
+     *  - a write to THAT key. record_set() calls insert_lookup_table(), which
+     *    removes and reinstalls the dictionary entry, so saving key K
+     *    invalidates K's pointer and iterator and nobody else's.
+     *  - ANY sector swap. swap_sectors() regenerates the whole lookup table
+     *    and frees every NVOL3_ENTRY_T. A swap can be triggered by a write to
+     *    any key, not only the one being held.
+     *
+     * Re-resolve with nvol3_entry_at() after either. nvol3_entry_save() does
+     * that for itself when its own write is what triggered the swap.
+     *
+     * RETURN. nvol3_entry_data() returns the data length on success - a
+     * positive count, not EOK - and a negative error code otherwise. Test it
+     * with < 0, not != EOK.
+     */
+    int32_t         nvol3_entry_first (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
+    int32_t         nvol3_entry_next (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
+    int32_t         nvol3_entry_at (NVOL3_INSTANCE_T* instance, const char * key, NVOL3_ITERATOR_T * it) ;
+    const char *    nvol3_entry_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
+    int32_t         nvol3_entry_data (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it, char ** data) ;
+    int32_t         nvol3_entry_save (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
+    int32_t         nvol3_entry_delete (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it) ;
+
+    /*
      * print the status of the nvol to the debug output.
      */
     void            nvol3_entry_log_status (NVOL3_INSTANCE_T* instance, uint32_t verbose) ;

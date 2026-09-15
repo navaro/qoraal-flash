@@ -577,6 +577,292 @@ nvol3_record_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
     return dictionary_get_key (instance->dict, it->it.np) ;
 }
 
+/**
+ * @brief Assemble a complete FLASH record from a dictionary entry.
+ * @note  Only valid when the entry actually caches its data; the caller is
+ *        responsible for that, and this rejects it rather than reading past
+ *        the allocation if it does not.
+ */
+static int32_t
+record_from_entry (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T * rec,
+                    struct dlist * m, NVOL3_ENTRY_T * entry)
+{
+    const NVOL3_CONFIG_T    *   config = instance->config ;
+    unsigned int keysize ;
+    uint16_t length ;
+    uint16_t byte ;
+
+    if (!entry) {
+        return E_NOTFOUND ;
+    }
+
+    length = entry->length ;
+    if (length > config->local_size) {
+        /* insert_lookup_table() clamped the cache to nothing for this record */
+        return E_INVALID ;
+    }
+
+    keysize = dictionary_get_key_size (instance->dict, m) ;
+    if (keysize > config->key_size) keysize = config->key_size ;
+
+    /* zero the key padding so identical records produce identical bytes */
+    memset (rec->key_and_data, 0, config->key_size) ;
+    memcpy (rec->key_and_data, dictionary_get_key (instance->dict, m), keysize) ;
+    memcpy (rec->key_and_data + config->key_size, entry->local, length) ;
+
+    rec->head.flags    = NVOL3_RECORD_FLAGS_VALID ;
+    rec->head.length   = config->key_size + length ;
+    rec->head.reserved = 0xFFFF ;
+    rec->head.checksum = 0 ;
+    for (byte = 0; byte < rec->head.length; byte++) {
+        rec->head.checksum += rec->key_and_data[byte] ;
+    }
+    rec->head.checksum = 0x10000 - rec->head.checksum ;
+
+    return EOK ;
+}
+
+/**
+ * @brief Initialize the iterator and return the first record in the volume.
+ * @param[in] instance
+ * @param[in/out] it
+ * @return
+ * @retval EOK          Record exist.
+ * @retval EFAIL        FLASH read write or emty volume.
+ */
+int32_t
+nvol3_entry_first (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
+{
+    int32_t status = EFAIL ;
+    struct dlist * m ;
+
+    if (!instance->dict || !it) return E_PARM ;
+
+    m = dictionary_it_first (instance->dict, &it->it, 0, 0, 0) ;
+    if(m) {
+        status = EOK ;
+    }
+
+    return status ;
+}
+
+/**
+ * @brief Increments the iterator and return the value.
+ * @param[in] instance
+ * @param[in/out] it
+ * @return
+ * @retval EOK          Record exist.
+ * @retval EFAIL        FLASH read write or last record.
+ */
+int32_t
+nvol3_entry_next (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
+{
+    int32_t status = EFAIL ;
+    struct dlist * m ;
+
+    if (!instance->dict || !it) return E_PARM ;
+
+    m = dictionary_it_next (instance->dict, &it->it) ;
+    if(m) {
+        status = EOK ;
+
+    }
+
+    return status ;
+}
+
+/**
+ * @brief return the itarator for the key.
+ * @param[in] instance
+ * @param[in/out] it
+ * @return
+ * @retval EOK          Record exist.
+ * @retval E_NOTFOUND    FLASH read write or last record.
+ */
+int32_t
+nvol3_entry_at (NVOL3_INSTANCE_T* instance, const char * key,
+                NVOL3_ITERATOR_T * it)
+{
+    int32_t status = E_NOTFOUND ;
+    //const NVOL3_CONFIG_T    *   config = instance->config ;
+    struct dlist * m ;
+
+    if (!instance->dict || !it) return E_PARM ;
+
+    m = dictionary_it_at (instance->dict, key, &it->it) ;
+    if(m) {
+        status = EOK ;
+
+    }
+
+    return status ;
+}
+
+/**
+ * @brief return the value for the iterator.
+ * @param[in] instance
+ * @param[in] it
+ * @param[out] data
+ * @return value length
+ */
+int32_t
+nvol3_entry_data (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it,
+                    char ** data)
+{
+    const NVOL3_CONFIG_T    *   config = instance->config ;
+    NVOL3_ENTRY_T* entry ;
+
+    if (!instance->dict || !it || !data) return E_PARM ;
+
+    entry = (NVOL3_ENTRY_T*)dictionary_get_value(instance->dict, it->it.np) ;
+    if (!entry) return E_NOTFOUND ;
+
+    /*
+     * entry->length is the record's data length, but insert_lookup_table()
+     * only allocates local[] when it fits in local_size - so on a volume that
+     * does not satisfy the "local_size == data_size" precondition these two
+     * disagree and local[] is empty. Refuse rather than hand out a length the
+     * buffer does not have.
+     */
+    if (entry->length > config->local_size) return E_INVALID ;
+
+    *data   =   (char *)entry->local ;
+
+    return entry->length ;
+}
+
+/**
+ * @brief return the key for the iterator.
+ * @param[in] instance
+ * @param[in] it
+ * @return key
+ */
+const char *
+nvol3_entry_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
+{
+    if (!instance->dict || !it) return 0 ;
+    return dictionary_get_key (instance->dict, it->it.np) ;
+}
+
+/**
+ * @brief save the entry for the iterator to FLASH
+ * @param[in] instance
+ * @param[in] it
+ * @return status
+ */
+int32_t
+nvol3_entry_save (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
+{
+    int32_t status ;
+    const NVOL3_CONFIG_T    *   config = instance->config ;
+    NVOL3_ENTRY_T* entry  ;
+    NVOL3_RECORD_T* value ;
+    uint32_t length ;
+
+    if (!instance->dict || !it) return E_PARM ;
+
+    entry = (NVOL3_ENTRY_T*)dictionary_get_value (instance->dict, it->it.np) ;
+    if (!entry) {
+        return E_NOTFOUND ;
+    }
+
+    value = NVOL3_MALLOC (config->record_size) ;
+    if (!value) return E_NOMEM ;
+
+    /*
+     * Assemble the record up front. After this nothing here needs *entry*,
+     * which matters because the swap below rebuilds the lookup table and
+     * frees it.
+     */
+    status = record_from_entry (instance, value, it->it.np, entry) ;
+    if (status != EOK) {
+        NVOL3_FREE (value) ;
+        return status ;
+    }
+    length = value->head.length ;
+
+    if (instance->next_idx >= max_records(instance)) {
+        /* if sector is full then swap sectors */
+        NVOL3_RECORD_T * scratch = NVOL3_MALLOC (config->record_size) ;
+        if (!scratch) {
+            NVOL3_FREE (value) ;
+            return E_NOMEM ;
+        }
+        status = swap_sectors (instance, scratch) ;
+        NVOL3_FREE (scratch) ;
+        if (status != EOK) {
+            NVOL3_FREE (value) ;
+            return EFAIL ;
+        }
+
+        /*
+         * swap_sectors() regenerates the lookup table, so *it* and *entry*
+         * are both stale now. Re-resolve from the key we just assembled.
+         */
+        if (nvol3_entry_at (instance, (const char*)value->key_and_data, it)
+                    != EOK) {
+            NVOL3_FREE (value) ;
+            return E_NOTFOUND ;
+        }
+        entry = (NVOL3_ENTRY_T*)dictionary_get_value (instance->dict,
+                        it->it.np) ;
+        if (!entry) {
+            NVOL3_FREE (value) ;
+            return E_NOTFOUND ;
+        }
+    }
+
+    status = record_set (instance, entry, value, length) ;
+
+    NVOL3_FREE (value) ;
+
+    return status ;
+}
+
+/**
+ * @brief delete the entry for the iterator from the dictionary and the FLASH
+ * @param[in] instance
+ * @param[in] it
+ * @return status
+ */
+int32_t
+nvol3_entry_delete (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
+{
+    int32_t status ;
+    //const NVOL3_CONFIG_T    *   config = instance->config ;
+    NVOL3_ENTRY_T* entry ;
+    uint16_t idx ;
+
+    if (!instance->dict || !it) return E_PARM ;
+
+    entry = (NVOL3_ENTRY_T*)dictionary_get_value(instance->dict, it->it.np) ;
+    if (!entry) return E_NOTFOUND ;
+
+    idx = entry->idx ;
+
+    /* see nvol3_record_delete(): FLASH first, lookup table second */
+    status = set_variable_record_flags (instance,  instance->sector,
+            NVOL3_RECORD_FLAGS_INVALID, idx ) ;
+    if (status != EOK) {
+        DBG_MESSAGE_NVOL3 (DBG_MESSAGE_SEVERITY_ERROR,
+                "NVOL3 :E: '%s' delete failed to invalidate idx %d (%d)",
+                instance->config->name, (uint32_t)idx, status) ;
+        return status ;
+    }
+
+    if (instance->inuse) instance->inuse-- ;
+    instance->invalid++ ;
+
+    if (dictionary_remove(instance->dict,
+            dictionary_get_key (instance->dict, it->it.np)) == 0) {
+        status = E_NOTFOUND ;
+    }
+
+    return status ;
+
+}
+
+
 
 int32_t
 nvol3_callback_tallie (struct NVOL3_INSTANCE_S * inst,
