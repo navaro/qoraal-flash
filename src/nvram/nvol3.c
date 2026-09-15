@@ -578,6 +578,42 @@ nvol3_record_key (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
 }
 
 /**
+ * @brief Does local_size guarantee that every record's data is cached?
+ * @note  Answered from the config, so a volume's answer is fixed when it is
+ *        declared and does not depend on what happens to be stored. That is
+ *        what lets the entry API promise stable pointers: whether a swap
+ *        rebuilds the lookup table becomes a property of the volume rather
+ *        than of its contents.
+ *
+ *        The bound is the padded record capacity, not the data_size passed to
+ *        NVOL3_INSTANCE_DECL. record_size is ALIGN_UP()'d and record_set()
+ *        enforces only that padded bound, so a record may legally be larger
+ *        than data_size; comparing against data_size would call a volume
+ *        fully cached when a legal write could still leave a record with no
+ *        local[]. Being conservative here only costs the optimisation.
+ */
+static int32_t
+fully_cached (NVOL3_INSTANCE_T * instance)
+{
+    const NVOL3_CONFIG_T    *   config = instance->config ;
+    uint32_t capacity ;
+
+    if (!config->local_size || !instance->dict) {
+        return 0 ;
+    }
+
+    if (config->record_size <=
+            sizeof(NVOL3_RECORD_HEAD_T) + config->key_size) {
+        return 0 ;
+    }
+
+    capacity = config->record_size - sizeof(NVOL3_RECORD_HEAD_T) -
+                    config->key_size ;
+
+    return capacity <= config->local_size ;
+}
+
+/**
  * @brief Assemble a complete FLASH record from a dictionary entry.
  * @note  Only valid when the entry actually caches its data; the caller is
  *        responsible for that, and this rejects it rather than reading past
@@ -1621,6 +1657,8 @@ swap_sectors (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
     struct dlist * m ;
     struct dictionary_it  it ;
     const NVOL3_CONFIG_T    *   config = instance->config ;
+    int32_t from_ram = fully_cached (instance) ;
+    int32_t rebuilt_from_ram ;
 
     if (instance->sector == config->sector1_addr) {
         src_addr = config->sector1_addr ;
@@ -1657,7 +1695,14 @@ swap_sectors (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
     for (m = dictionary_it_first (instance->dict, &it, 0, 0, 0) ; m;  ) {
         NVOL3_ENTRY_T* entry =
           (NVOL3_ENTRY_T*)dictionary_get_value(instance->dict, m) ;
-        status = read_variable_record (instance, scratch, entry->idx, 0)  ;
+        /*
+         * Where the dictionary caches every record, rebuild from RAM instead
+         * of reading the source sector back. That is also what lets the
+         * lookup table survive the swap - see the tail of this function.
+         */
+        status = from_ram ?
+                record_from_entry (instance, scratch, m, entry) :
+                read_variable_record (instance, scratch, entry->idx, 0)  ;
 
         if (status == EOK) {
             if ((status = write_variable_record (instance,  dst_addr, scratch,
@@ -1693,6 +1738,13 @@ swap_sectors (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
         m = dictionary_it_next (instance->dict, &it) ;
     }
 
+    /*
+     * Only a RAM rebuild that ran to completion leaves the lookup table
+     * usable. Capture that here, before the recovery below reassigns status:
+     * move_sector() writes the destination itself and does not touch the
+     * dictionary, so that path still needs the table rebuilt from FLASH.
+     */
+    rebuilt_from_ram = from_ram && (status == EOK) ;
 
     if (status != EOK) {
         if (move_sector (instance, scratch, dst_addr) != EOK) {
@@ -1714,8 +1766,29 @@ swap_sectors (NVOL3_INSTANCE_T * instance, NVOL3_RECORD_T* scratch)
     /* now using destination sector */
     instance->sector = dst_addr ;
 
-    /* regenerate lookup table */
-    construct_lookup_table(instance, scratch);
+    if (rebuilt_from_ram) {
+        /*
+         * Nothing was freed and entry->idx was updated as each record was
+         * written, so the lookup table is already correct - and everything
+         * construct_lookup_table() would have recomputed is known here. Not
+         * rebuilding it is what keeps NVOL3_ENTRY_T pointers and iterators
+         * valid across a swap, which the entry API contract depends on.
+         *
+         * The destination was erased before the writes, so nothing on it is
+         * invalid or in error, and dst_idx is the slot after the last one
+         * written.
+         */
+        instance->next_idx = dst_idx ;
+        instance->inuse    = dictionary_count (instance->dict) ;
+        instance->invalid  = 0 ;
+        instance->error    = 0 ;
+        instance->version  = get_sector_version (config, instance->sector, 0) ;
+
+    } else {
+        /* regenerate lookup table */
+        construct_lookup_table(instance, scratch);
+
+    }
 
     /* erase source sector */
     if ((status = erase_sector(config, src_addr, config->sector_size)) != EOK) {

@@ -259,12 +259,22 @@ extern "C" {
      *  - a write to THAT key. record_set() calls insert_lookup_table(), which
      *    removes and reinstalls the dictionary entry, so saving key K
      *    invalidates K's pointer and iterator and nobody else's.
-     *  - ANY sector swap. swap_sectors() regenerates the whole lookup table
-     *    and frees every NVOL3_ENTRY_T. A swap can be triggered by a write to
-     *    any key, not only the one being held.
+     *  - a sector swap that could not be written out of RAM. On a volume
+     *    meeting the precondition above a swap rebuilds the destination from
+     *    the dictionary, so nothing is freed and pointers survive it. Only
+     *    the move_sector() recovery, which runs after a FLASH error and
+     *    returns the caller an error anyway, falls back to rebuilding the
+     *    lookup table from FLASH.
      *
      * Re-resolve with nvol3_entry_at() after either. nvol3_entry_save() does
      * that for itself when its own write is what triggered the swap.
+     *
+     * One consequence worth knowing: because such a swap writes the volume
+     * out of RAM, it persists EVERY pending cached change, not just the one
+     * whose save triggered it. For a volume meeting the precondition the
+     * dictionary is the authority, so that is the correct thing to write -
+     * but a cached modification can reach FLASH without its own
+     * nvol3_entry_save().
      *
      * RETURN. nvol3_entry_data() returns the data length on success - a
      * positive count, not EOK - and a negative error code otherwise. Test it
