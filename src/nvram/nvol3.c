@@ -807,8 +807,8 @@ nvol3_entry_save (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
 
     /*
      * Assemble the record up front. After this nothing here needs *entry*,
-     * which matters because the swap below rebuilds the lookup table and
-     * frees it.
+     * which matters because the swap below can fall back to move_sector(),
+     * and the rebuild that follows frees it.
      */
     status = record_from_entry (instance, value, it->it.np, entry) ;
     if (status != EOK) {
@@ -832,8 +832,10 @@ nvol3_entry_save (NVOL3_INSTANCE_T* instance, NVOL3_ITERATOR_T * it)
         }
 
         /*
-         * swap_sectors() regenerates the lookup table, so *it* and *entry*
-         * are both stale now. Re-resolve from the key we just assembled.
+         * A swap written out of RAM leaves the lookup table in place, so *it*
+         * is still good - but the move_sector() recovery does not, and
+         * swap_sectors() returns EOK either way. Re-resolve from the key we
+         * just assembled rather than assume which path ran.
          */
         if (nvol3_entry_at (instance, (const char*)value->key_and_data, it)
                     != EOK) {
