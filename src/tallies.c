@@ -35,8 +35,6 @@
 #define DBG_MESSAGE_TALLIES(severity, fmt_str, ...) \
         DBG_MESSAGE_T_LOG (SVC_LOGGER_TYPE(severity,0), 0, fmt_str, ##__VA_ARGS__)
 
-extern void keep_talliescmds (void) ;
-
 /*===========================================================================*/
 /* Stored record.                                                            */
 /*===========================================================================*/
@@ -70,9 +68,27 @@ typedef struct TALLIES_RECORD_S {
 static NVOL3_INSTANCE_T *   _tallies_inst = 0 ;
 static TALLIES_BLOCK_T *    _tallies_blocks = 0 ;
 static uint32_t             _tallies_started = 0 ;
-static uint32_t             _tallies_paused = 0 ;
 static uint32_t             _tallies_mismatched = 0 ;
+
+/*
+ * Two locks, and they are not interchangeable.
+ *
+ * _tallies_mutex covers the counters - entry[] and dirty[]. Every hot path
+ * takes it, so it is only ever held for a handful of instructions and never
+ * across a FLASH access.
+ *
+ * _tallies_volume covers the nvol3 instance and the scratch record below.
+ * This is the one held across FLASH, which on a volume whose sectors are
+ * erased in place is milliseconds, not microseconds. A counter raised on an
+ * error path must not queue behind that, which is the whole reason the two
+ * are separate.
+ *
+ * Where both are needed - the persist pass, the load - _tallies_volume is
+ * taken first and _tallies_mutex taken and released inside it, once per
+ * entry. Never the other way round.
+ */
 static p_mutex_t            _tallies_mutex = 0 ;
+static p_mutex_t            _tallies_volume = 0 ;
 
 /*
  * One scratch record for the whole store, allocated at start and reused.
@@ -85,8 +101,7 @@ static NVOL3_RECORD_T *     _tallies_scratch = 0 ;
 
 static SVC_TASKS_DECL(_tallies_task) ;
 
-static int32_t  block_persist_locked (TALLIES_BLOCK_T * blk, uint16_t local) ;
-static int32_t  stop_timer_locked (TALLIES_BLOCK_T * blk, uint16_t local) ;
+static uint32_t entry_write (TALLIES_BLOCK_T * blk, uint16_t local) ;
 
 /*===========================================================================*/
 /* Local functions.                                                          */
@@ -103,36 +118,6 @@ tallies_ready (TALLIES_BLOCK_T * blk, uint16_t local)
     if (!_tallies_inst || !blk || (local >= blk->count) ||
             (blk->base == TALLIES_BASE_NONE)) {
         return E_PARM ;
-    }
-
-    return EOK ;
-}
-
-/**
- * @brief   EOK if this entry may be counted, E_BUSY if it is still inside its
- *          rate limit window.
- * @note    Only inc and add consult it. Rate limiting a set, a clear or a
- *          timer stop would silently drop a deliberate write.
- * @note    Called with the mutex held: it reads the timestamp that every
- *          other mutation writes.
- */
-static int32_t
-rate_limited_locked (TALLIES_BLOCK_T * blk, uint16_t local)
-{
-    if (blk->defs[local].seconds) {
-        RTCLIB_DATE_T date ;
-        RTCLIB_TIME_T time ;
-
-        rtc_localtime (rtc_time(), &date, &time) ;
-
-        if (blk->entry[local].date.date != date.date) {
-            return EOK ;
-        }
-
-        if (rtc_seconds_diff (blk->entry[local].time, time) <
-                    blk->defs[local].seconds) {
-            return E_BUSY ;
-        }
     }
 
     return EOK ;
@@ -194,6 +179,9 @@ block_find_overlap (const TALLIES_BLOCK_T * blk, uint32_t base)
 
 /**
  * @brief   Zero a block and refill it from the volume.
+ * @note    Called with the volume mutex held and the value mutex NOT held.
+ *          The record is read from FLASH unlocked and only the handover into
+ *          entry[] takes the value mutex, one entry at a time.
  */
 static void
 block_load (TALLIES_BLOCK_T * blk)
@@ -204,10 +192,12 @@ block_load (TALLIES_BLOCK_T * blk)
     for (local = 0; local < blk->count; local++) {
         char name[TALLIES_MAX_NAME_LEN] ;
 
+        os_mutex_lock (&_tallies_mutex) ;
         blk->dirty[local] = TALLIES_CLEAN ;
         blk->entry[local].date.date = 0 ;
         blk->entry[local].time.time = 0 ;
         blk->entry[local].value = 0 ;
+        os_mutex_unlock (&_tallies_mutex) ;
 
         if (!_tallies_inst->dict || !record) {
             continue ;
@@ -219,7 +209,7 @@ block_load (TALLIES_BLOCK_T * blk)
             continue ;
         }
 
-        name_canonical (blk->defs[local].name, name) ;
+        name_canonical (blk->defs[local], name) ;
         if (memcmp (record->data.name, name, TALLIES_MAX_NAME_LEN) != 0) {
             /*
              * Someone else's counter is sitting on this id - the module
@@ -232,7 +222,7 @@ block_load (TALLIES_BLOCK_T * blk)
 
             DBG_MESSAGE_TALLIES (DBG_MESSAGE_SEVERITY_WARNING,
                     "TALY  :W: '%s.%s' id %d holds '%s' - reset",
-                    blk->name, blk->defs[local].name,
+                    blk->name, blk->defs[local],
                     (int32_t)(blk->base + local), stored) ;
 
             record->key = (uint32_t)(blk->base + local) ;
@@ -241,61 +231,92 @@ block_load (TALLIES_BLOCK_T * blk)
             continue ;
         }
 
+        os_mutex_lock (&_tallies_mutex) ;
         blk->entry[local] = record->data.entry ;
+        blk->dirty[local] = TALLIES_CLEAN ;
+        os_mutex_unlock (&_tallies_mutex) ;
     }
 }
 
-static int32_t
-block_persist_locked (TALLIES_BLOCK_T * blk, uint16_t local)
+/**
+ * @brief   Snapshot one entry and write it out, if it is dirty.
+ * @note    Called with the volume mutex held and the value mutex NOT held.
+ *          The value mutex is taken twice and briefly - once to claim the
+ *          entry and copy it into the scratch record, and again only if the
+ *          write failed - so nothing counting into this block waits on FLASH.
+ * @return  1 if a write was attempted, 0 if the entry was already clean.
+ */
+static uint32_t
+entry_write (TALLIES_BLOCK_T * blk, uint16_t local)
 {
     TALLIES_RECORD_T * record = (TALLIES_RECORD_T *)_tallies_scratch ;
 
-    if (!record || !_tallies_inst->dict) {
-        return E_UNEXP ;
+    os_mutex_lock (&_tallies_mutex) ;
+
+    if (blk->dirty[local] == TALLIES_CLEAN) {
+        os_mutex_unlock (&_tallies_mutex) ;
+        return 0 ;
     }
+
+    /*
+     * Claimed before the write rather than after it. A counter raised while
+     * the write is in flight has to leave the entry dirty so that the next
+     * pass writes the newer value; clearing the flag afterwards would drop
+     * exactly that increment.
+     */
+    blk->dirty[local] = TALLIES_CLEAN ;
 
     memset (record, 0, sizeof(TALLIES_RECORD_T)) ;
     record->key = (uint32_t)(blk->base + local) ;
-    name_canonical (blk->defs[local].name, record->data.name) ;
+    name_canonical (blk->defs[local], record->data.name) ;
     record->data.entry = blk->entry[local] ;
 
-    /*
-     * A running timer is stored as a snapshot: what it has banked, plus what
-     * has run since it started. Only the record is adjusted - the entry in
-     * RAM keeps its start time - so writing it out neither moves the start
-     * nor double counts, and stopping the timer later still measures the
-     * whole interval from where it actually began.
-     */
-    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-        record->data.entry.value += rtc_seconds_elapsed (
-                        blk->entry[local].date, blk->entry[local].time) ;
+    os_mutex_unlock (&_tallies_mutex) ;
+
+    if (nvol3_record_set (_tallies_inst, (NVOL3_RECORD_T *)record,
+                    TALLIES_RECORD_LEN) < EOK) {
+        /*
+         * Hand it back so the next pass retries. If it has been raised again
+         * in the meantime it is dirty already and this changes nothing.
+         */
+        os_mutex_lock (&_tallies_mutex) ;
+        blk->dirty[local] = TALLIES_DIRTY ;
+        os_mutex_unlock (&_tallies_mutex) ;
     }
 
-    return nvol3_record_set (_tallies_inst, (NVOL3_RECORD_T *)record,
-                    TALLIES_RECORD_LEN) ;
+    return 1 ;
 }
 
 /**
  * @brief   Write out dirty entries, at most @p max of them.
- * @param[in] all   also sample running timers.
  * @param[in] max   0 for no bound.
  * @return  the number of entries still needing a write.
+ *
+ * @note    The volume mutex is held for the whole pass - one pass at a time,
+ *          and the scratch record is not shared with a concurrent load - but
+ *          the value mutex is only taken per entry, inside entry_write().
+ *          A pass is therefore not atomic against the counters: an entry
+ *          raised after it was snapshotted stays dirty and goes out next
+ *          time. For a running total whose last write wins that is the point.
  */
 static uint32_t
-tallies_persist_bounded (uint32_t all, uint32_t max)
+tallies_persist_bounded (uint32_t max)
 {
     TALLIES_BLOCK_T * blk ;
     uint32_t written = 0 ;
     uint32_t remaining = 0 ;
 
+    os_mutex_lock (&_tallies_volume) ;
+
     /*
      * Not gated on _tallies_started: tallies_stop() flushes after clearing it.
+     * With no volume there is nowhere to write and every entry stays dirty,
+     * which is what "counting in RAM only" means.
      */
-    if (!_tallies_scratch) {
+    if (!_tallies_scratch || !_tallies_inst || !_tallies_inst->dict) {
+        os_mutex_unlock (&_tallies_volume) ;
         return 0 ;
     }
-
-    os_mutex_lock (&_tallies_mutex) ;
 
     for (blk = _tallies_blocks; blk; blk = blk->next) {
         uint16_t local ;
@@ -306,41 +327,25 @@ tallies_persist_bounded (uint32_t all, uint32_t max)
 
         for (local = 0; local < blk->count; local++) {
 
-            if ((blk->dirty[local] == TALLIES_CLEAN) ||
-                (blk->dirty[local] == TALLIES_DIRTY_TIMER_PAUSED)) {
-                continue ;
-            }
-
             /*
-             * A running timer is never updated in place - the value it has
-             * banked only changes when it is stopped or paused. All this pass
-             * does is write a snapshot of it, which block_persist_locked()
-             * composes, and only when asked for one.
-             */
-            if ((blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) && !all) {
-                continue ;
-            }
-
-            /*
-             * Bound the work per tick. The flag is only cleared once the write
-             * has actually happened, so what is left over is picked up by the
+             * Bound the work per tick. An entry is only claimed when it is
+             * about to be written, so what is left over is picked up by the
              * next pass rather than lost.
              */
             if (max && (written >= max)) {
-                remaining++ ;
+                os_mutex_lock (&_tallies_mutex) ;
+                if (blk->dirty[local] != TALLIES_CLEAN) {
+                    remaining++ ;
+                }
+                os_mutex_unlock (&_tallies_mutex) ;
                 continue ;
             }
 
-            if (blk->dirty[local] == TALLIES_DIRTY_VALUE) {
-                blk->dirty[local] = TALLIES_CLEAN ;
-            }
-
-            block_persist_locked (blk, local) ;
-            written++ ;
+            written += entry_write (blk, local) ;
         }
     }
 
-    os_mutex_unlock (&_tallies_mutex) ;
+    os_mutex_unlock (&_tallies_volume) ;
 
     return remaining ;
 }
@@ -352,7 +357,7 @@ tallies_cb (SVC_TASKS_T * task, uintptr_t parm, uint32_t reason)
         uint32_t remaining ;
         uint32_t nexttime ;
 
-        remaining = tallies_persist_bounded (1, TALLIES_PERSIST_MAX_PER_PASS) ;
+        remaining = tallies_persist_bounded (TALLIES_PERSIST_MAX_PER_PASS) ;
         nexttime = remaining ?
                 SVC_TASK_S2TICKS(TALLIES_PERSIST_RESUME) :
                 SVC_TASK_S2TICKS(TALLIES_PERSIST_INTERVAL) ;
@@ -377,14 +382,15 @@ tallies_init (NVOL3_INSTANCE_T * inst)
         return E_PARM ;
     }
 
-    keep_talliescmds () ;
-
     /*
-     * The mutex is created here, not in tallies_start(): a registered block
+     * The mutexes are created here, not in tallies_start(): a registered block
      * can be counted into before the volume is up, and every mutation takes
-     * the lock.
+     * the value lock.
      */
     if (!_tallies_mutex && (os_mutex_create (&_tallies_mutex) != EOK)) {
+        return EFAIL ;
+    }
+    if (!_tallies_volume && (os_mutex_create (&_tallies_volume) != EOK)) {
         return EFAIL ;
     }
 
@@ -406,8 +412,11 @@ tallies_start (void)
         return EOK ;
     }
 
+    os_mutex_lock (&_tallies_volume) ;
+
     _tallies_scratch = NVOL3_MALLOC (_tallies_inst->config->record_size) ;
     if (!_tallies_scratch) {
+        os_mutex_unlock (&_tallies_volume) ;
         return E_NOMEM ;
     }
 
@@ -430,13 +439,16 @@ tallies_start (void)
                 status) ;
     }
 
-    os_mutex_lock (&_tallies_mutex) ;
-    _tallies_paused = 0 ;
     for (blk = _tallies_blocks; blk; blk = blk->next) {
         if (blk->base != TALLIES_BASE_NONE) {
             block_load (blk) ;
         }
     }
+
+    os_mutex_unlock (&_tallies_volume) ;
+
+    /* Last, so a block registering concurrently does not try to load twice. */
+    os_mutex_lock (&_tallies_mutex) ;
     _tallies_started = 1 ;
     os_mutex_unlock (&_tallies_mutex) ;
 
@@ -450,8 +462,6 @@ tallies_start (void)
 void
 tallies_stop (void)
 {
-    TALLIES_BLOCK_T * blk ;
-
     if (!_tallies_started) {
         return ;
     }
@@ -460,23 +470,13 @@ tallies_stop (void)
     _tallies_started = 0 ;
     svc_tasks_cancel_wait (&_tallies_task, 1000) ;
 
-    /* Stop the running timers so their elapsed seconds are banked, then flush. */
-    os_mutex_lock (&_tallies_mutex) ;
-    for (blk = _tallies_blocks; blk; blk = blk->next) {
-        uint16_t local ;
-        for (local = 0; local < blk->count; local++) {
-            if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-                stop_timer_locked (blk, local) ;
-            }
-        }
-    }
-    os_mutex_unlock (&_tallies_mutex) ;
+    tallies_persist_bounded (0) ;
 
-    tallies_persist_bounded (1, 0) ;
-
+    os_mutex_lock (&_tallies_volume) ;
     nvol3_unload (_tallies_inst) ;
     NVOL3_FREE (_tallies_scratch) ;
     _tallies_scratch = 0 ;
+    os_mutex_unlock (&_tallies_volume) ;
 }
 
 void
@@ -488,26 +488,20 @@ tallies_reset (void)
         return ;
     }
 
-    os_mutex_lock (&_tallies_mutex) ;
-
+    /* The erase is the slow half and has no business holding the value lock. */
+    os_mutex_lock (&_tallies_volume) ;
     nvol3_reset (_tallies_inst) ;
+    os_mutex_unlock (&_tallies_volume) ;
+
+    os_mutex_lock (&_tallies_mutex) ;
 
     for (blk = _tallies_blocks; blk; blk = blk->next) {
         uint16_t local ;
         for (local = 0; local < blk->count; local++) {
-            int32_t running = (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) ;
-
             blk->entry[local].value = 0 ;
             blk->entry[local].date.date = 0 ;
             blk->entry[local].time.time = 0 ;
-            blk->dirty[local] = TALLIES_DIRTY_VALUE ;
-
-            if (running) {
-                rtc_localtime (rtc_time(), &blk->entry[local].date,
-                                &blk->entry[local].time) ;
-                blk->dirty[local] = _tallies_paused ?
-                        TALLIES_DIRTY_TIMER_PAUSED : TALLIES_DIRTY_TIMER_RUNNING ;
-            }
+            blk->dirty[local] = TALLIES_DIRTY ;
         }
     }
 
@@ -515,7 +509,11 @@ tallies_reset (void)
 
     os_mutex_unlock (&_tallies_mutex) ;
 
-    tallies_persist_bounded (1, 0) ;
+    /*
+     * Write the zeros back. Anything counted between the erase and here is
+     * dirty already and goes out with them.
+     */
+    tallies_persist_bounded (0) ;
 }
 
 /*===========================================================================*/
@@ -544,8 +542,8 @@ tallies_register (TALLIES_BLOCK_T * blk, int32_t base)
     }
 
     for (local = 0; local < blk->count; local++) {
-        if (!blk->defs[local].name ||
-                (strlen (blk->defs[local].name) > TALLIES_MAX_NAME_LEN - 1)) {
+        if (!blk->defs[local] ||
+                (strlen (blk->defs[local]) > TALLIES_MAX_NAME_LEN - 1)) {
             DBG_MESSAGE_TALLIES (DBG_MESSAGE_SEVERITY_ERROR,
                     "TALY  :E: register '%s' name %d too long (max %d) res=%d",
                     blk->name, (int32_t)local, TALLIES_MAX_NAME_LEN - 1, E_PARM) ;
@@ -583,9 +581,9 @@ tallies_register (TALLIES_BLOCK_T * blk, int32_t base)
      * is populated here instead.
      */
     if (_tallies_started) {
-        os_mutex_lock (&_tallies_mutex) ;
+        os_mutex_lock (&_tallies_volume) ;
         block_load (blk) ;
-        os_mutex_unlock (&_tallies_mutex) ;
+        os_mutex_unlock (&_tallies_volume) ;
     }
 
     return EOK ;
@@ -634,23 +632,18 @@ tallies_inc (TALLIES_BLOCK_T * blk, uint16_t local)
 int32_t
 tallies_add (TALLIES_BLOCK_T * blk, uint16_t local, uint32_t value)
 {
-    int32_t status ;
-
     if (tallies_ready (blk, local) != EOK) {
         return E_PARM ;
     }
 
     os_mutex_lock (&_tallies_mutex) ;
-    status = rate_limited_locked (blk, local) ;
-    if (status == EOK) {
-        rtc_localtime (rtc_time(), &blk->entry[local].date,
-                        &blk->entry[local].time) ;
-        blk->entry[local].value += value ;
-        blk->dirty[local] = TALLIES_DIRTY_VALUE ;
-    }
+    rtc_localtime (rtc_time(), &blk->entry[local].date,
+                    &blk->entry[local].time) ;
+    blk->entry[local].value += value ;
+    blk->dirty[local] = TALLIES_DIRTY ;
     os_mutex_unlock (&_tallies_mutex) ;
 
-    return status ;
+    return EOK ;
 }
 
 int32_t
@@ -663,7 +656,7 @@ tallies_set (TALLIES_BLOCK_T * blk, uint16_t local, uint32_t value)
     os_mutex_lock (&_tallies_mutex) ;
     rtc_localtime (rtc_time(), &blk->entry[local].date, &blk->entry[local].time) ;
     blk->entry[local].value = value ;
-    blk->dirty[local] = TALLIES_DIRTY_VALUE ;
+    blk->dirty[local] = TALLIES_DIRTY ;
     os_mutex_unlock (&_tallies_mutex) ;
 
     return EOK ;
@@ -680,121 +673,10 @@ tallies_clear (TALLIES_BLOCK_T * blk, uint16_t local)
     blk->entry[local].value = 0 ;
     blk->entry[local].date.date = 0 ;
     blk->entry[local].time.time = 0 ;
-    blk->dirty[local] = TALLIES_DIRTY_VALUE ;
+    blk->dirty[local] = TALLIES_DIRTY ;
     os_mutex_unlock (&_tallies_mutex) ;
 
     return EOK ;
-}
-
-/*===========================================================================*/
-/* Timers.                                                                   */
-/*===========================================================================*/
-
-int32_t
-tallies_start_timer (TALLIES_BLOCK_T * blk, uint16_t local)
-{
-    int32_t status = E_UNEXP ;
-
-    if (tallies_ready (blk, local) != EOK) {
-        return E_PARM ;
-    }
-
-    os_mutex_lock (&_tallies_mutex) ;
-    if (blk->dirty[local] != TALLIES_DIRTY_TIMER_RUNNING) {
-        rtc_localtime (rtc_time(), &blk->entry[local].date,
-                        &blk->entry[local].time) ;
-        blk->dirty[local] = _tallies_paused ?
-                TALLIES_DIRTY_TIMER_PAUSED : TALLIES_DIRTY_TIMER_RUNNING ;
-        status = EOK ;
-    }
-    os_mutex_unlock (&_tallies_mutex) ;
-
-    return status ;
-}
-
-static int32_t
-stop_timer_locked (TALLIES_BLOCK_T * blk, uint16_t local)
-{
-    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-        /*
-         * The timestamp is the start, untouched since the timer began, so
-         * this is the whole interval and there is nothing to reconstruct.
-         * rtc_seconds_elapsed() returns 0 for a start in the future, which is
-         * what a clock stepped backwards under a running timer looks like.
-         * A step forwards is what tallies_timers_pause() is for.
-         */
-        blk->entry[local].value += rtc_seconds_elapsed (
-                        blk->entry[local].date, blk->entry[local].time) ;
-
-        /* From here the timestamp means "when it last changed" again. */
-        rtc_localtime (rtc_time(), &blk->entry[local].date,
-                        &blk->entry[local].time) ;
-        blk->dirty[local] = TALLIES_DIRTY_VALUE ;
-        return EOK ;
-    }
-
-    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_PAUSED) {
-        blk->dirty[local] = TALLIES_DIRTY_VALUE ;
-        return EOK ;
-    }
-
-    return E_UNEXP ;
-}
-
-int32_t
-tallies_stop_timer (TALLIES_BLOCK_T * blk, uint16_t local)
-{
-    int32_t status ;
-
-    if (tallies_ready (blk, local) != EOK) {
-        return E_PARM ;
-    }
-
-    os_mutex_lock (&_tallies_mutex) ;
-    status = stop_timer_locked (blk, local) ;
-    os_mutex_unlock (&_tallies_mutex) ;
-
-    return status ;
-}
-
-void
-tallies_timers_pause (void)
-{
-    TALLIES_BLOCK_T * blk ;
-
-    os_mutex_lock (&_tallies_mutex) ;
-    _tallies_paused = 1 ;
-
-    for (blk = _tallies_blocks; blk; blk = blk->next) {
-        uint16_t local ;
-        for (local = 0; local < blk->count; local++) {
-            if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-                stop_timer_locked (blk, local) ;
-                blk->dirty[local] = TALLIES_DIRTY_TIMER_PAUSED ;
-            }
-        }
-    }
-    os_mutex_unlock (&_tallies_mutex) ;
-}
-
-void
-tallies_timers_resume (void)
-{
-    TALLIES_BLOCK_T * blk ;
-
-    os_mutex_lock (&_tallies_mutex) ;
-    for (blk = _tallies_blocks; blk; blk = blk->next) {
-        uint16_t local ;
-        for (local = 0; local < blk->count; local++) {
-            if (blk->dirty[local] == TALLIES_DIRTY_TIMER_PAUSED) {
-                rtc_localtime (rtc_time(), &blk->entry[local].date,
-                                &blk->entry[local].time) ;
-                blk->dirty[local] = TALLIES_DIRTY_TIMER_RUNNING ;
-            }
-        }
-    }
-    _tallies_paused = 0 ;
-    os_mutex_unlock (&_tallies_mutex) ;
 }
 
 /*===========================================================================*/
@@ -812,10 +694,6 @@ tallies_get_value (TALLIES_BLOCK_T * blk, uint16_t local)
 
     os_mutex_lock (&_tallies_mutex) ;
     value = blk->entry[local].value ;
-    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-        value += rtc_seconds_elapsed (blk->entry[local].date,
-                        blk->entry[local].time) ;
-    }
     os_mutex_unlock (&_tallies_mutex) ;
 
     return value ;
@@ -830,10 +708,6 @@ tallies_get (TALLIES_BLOCK_T * blk, uint16_t local, TALLIES_ENTRY_T * out)
 
     os_mutex_lock (&_tallies_mutex) ;
     *out = blk->entry[local] ;
-    if (blk->dirty[local] == TALLIES_DIRTY_TIMER_RUNNING) {
-        out->value += rtc_seconds_elapsed (blk->entry[local].date,
-                        blk->entry[local].time) ;
-    }
     os_mutex_unlock (&_tallies_mutex) ;
 
     return EOK ;
@@ -846,13 +720,13 @@ tallies_name (TALLIES_BLOCK_T * blk, uint16_t local)
         return 0 ;
     }
 
-    return blk->defs[local].name ;
+    return blk->defs[local] ;
 }
 
 void
-tallies_persist (uint32_t all)
+tallies_persist (void)
 {
-    tallies_persist_bounded (all, 0) ;
+    tallies_persist_bounded (0) ;
 }
 
 TALLIES_BLOCK_T *
@@ -873,12 +747,38 @@ tallies_mismatched (void)
     return _tallies_mismatched ;
 }
 
+int32_t
+tallies_status_get (NVOL3_STATUS_T * status)
+{
+    int32_t res ;
+
+    if (!status) {
+        return E_PARM ;
+    }
+    if (!_tallies_inst) {
+        return E_UNEXP ;
+    }
+
+    /*
+     * The volume mutex covers the snapshot and nothing beyond it. Formatting
+     * belongs to the caller, with the lock released - see the note on the
+     * lock split in tallies.h.
+     */
+    os_mutex_lock (&_tallies_volume) ;
+    res = nvol3_status_get (_tallies_inst, status) ;
+    os_mutex_unlock (&_tallies_volume) ;
+
+    return res ;
+}
+
 void
 tallies_log_status (void)
 {
+    os_mutex_lock (&_tallies_volume) ;
     if (_tallies_inst && _tallies_inst->dict) {
         nvol3_entry_log_status (_tallies_inst, 1) ;
     }
+    os_mutex_unlock (&_tallies_volume) ;
 }
 
 #endif /* CONFIG_QORAAL_FLASH_TALLIES */

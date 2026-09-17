@@ -201,7 +201,7 @@ test_register_before_and_after_start (void)
     /* after */
     CHECK (tallies_register (&_mod_tallies, MOD_BASE) == EOK, "register mod") ;
     CHECK (TALLIES_INC(mod, started) == EOK, "inc started") ;
-    tallies_persist (1) ;
+    tallies_persist () ;
     tallies_stop () ;
 
     /* both survive, and both come back whichever order they register in */
@@ -231,7 +231,7 @@ test_id_reuse_resets (void)
     CHECK (tallies_start () == EOK, "start") ;
     CHECK (TALLIES_ADD(sys, init, 11) == EOK, "add init") ;
     CHECK (TALLIES_ADD(sys, wdt, 22) == EOK, "add wdt") ;
-    tallies_persist (1) ;
+    tallies_persist () ;
     tallies_stop () ;
 
     /* "alt" now occupies the ids that "sys" used to own */
@@ -270,120 +270,69 @@ test_overlapping_base_rejected (void)
 }
 
 /*
- * The rate limiter was dead code before: TALLIE_DEF(x) zeroed seconds for every
- * entry, so nothing was ever limited.
+ * The persist pass claims an entry - clears its dirty flag - before writing it,
+ * so a counter raised between two passes is written by the second one and not
+ * dropped. The single threaded harness cannot interleave a raise with a write,
+ * but it can prove the flag is not simply cleared for the whole pass.
  */
 static void
-test_rate_limit (void)
+test_dirty_survives_persist (void)
 {
-    printf ("  test_rate_limit\n") ;
-    tv_fresh () ;
-
-    CHECK (tallies_register (&_mod_tallies, MOD_BASE) == EOK, "register mod") ;
-    CHECK (tallies_start () == EOK, "start") ;
-
-    CHECK (TALLIES_INC(mod, poll) == EOK, "first inc") ;
-    CHECK (TALLIES_INC(mod, poll) == E_BUSY,
-            "second inc inside the window should report E_BUSY") ;
-    CHECK (TALLIES_GET(mod, poll) == 1, "poll %u, expected 1",
-            (unsigned)TALLIES_GET(mod, poll)) ;
-
-    _test_now += SECONDS_TEN + 1 ;
-    CHECK (TALLIES_INC(mod, poll) == EOK, "inc after the window") ;
-    CHECK (TALLIES_GET(mod, poll) == 2, "poll %u, expected 2",
-            (unsigned)TALLIES_GET(mod, poll)) ;
-
-    /* an unlimited tallie in the same block is unaffected */
-    CHECK (TALLIES_INC(mod, started) == EOK, "inc started") ;
-    CHECK (TALLIES_INC(mod, started) == EOK, "second inc started") ;
-    CHECK (TALLIES_GET(mod, started) == 2, "started %u, expected 2",
-            (unsigned)TALLIES_GET(mod, started)) ;
-
-    /* set and clear are deliberate writes and are never rate limited */
-    CHECK (TALLIES_SET(mod, poll, 99) == EOK, "set poll") ;
-    CHECK (TALLIES_SET(mod, poll, 98) == EOK, "second set poll") ;
-    CHECK (TALLIES_GET(mod, poll) == 98, "poll %u, expected 98",
-            (unsigned)TALLIES_GET(mod, poll)) ;
-
-    tallies_stop () ;
-}
-
-/* A timer accumulates the seconds between start and stop. */
-static void
-test_timer (void)
-{
-    printf ("  test_timer\n") ;
+    printf ("  test_dirty_survives_persist\n") ;
     tv_fresh () ;
 
     CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
     CHECK (tallies_start () == EOK, "start") ;
 
-    CHECK (TALLIES_START_TIMER(sys, uptime) == EOK, "start timer") ;
-    CHECK (TALLIES_START_TIMER(sys, uptime) != EOK, "restart accepted") ;
+    CHECK (TALLIES_ADD(sys, wdt, 1) == EOK, "add wdt") ;
+    tallies_persist () ;
 
-    _test_now += 5 ;
-    /* a running timer reports the elapsed seconds before it is stopped */
-    CHECK (TALLIES_GET(sys, uptime) == 5, "running timer %u, expected 5",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
-
-    CHECK (TALLIES_STOP_TIMER(sys, uptime) == EOK, "stop timer") ;
-    CHECK (TALLIES_GET(sys, uptime) == 5, "stopped timer %u, expected 5",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
-
-    /* pause / resume must not absorb a clock step as elapsed time */
-    CHECK (TALLIES_START_TIMER(sys, uptime) == EOK, "restart timer") ;
-    _test_now += 2 ;
-    tallies_timers_pause () ;
-    _test_now += 100000 ;               /* the clock is set */
-    tallies_timers_resume () ;
-    _test_now += 3 ;
-    CHECK (TALLIES_STOP_TIMER(sys, uptime) == EOK, "stop timer again") ;
-    CHECK (TALLIES_GET(sys, uptime) == 10, "uptime %u, expected 10",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
-
-    tallies_stop () ;
-}
-
-/*
- * Writing a running timer out must not disturb it. This is what the periodic
- * pass does, and it is where a long running timer used to lose its interval:
- * the pass banked what had elapsed and re-based the start each time, so the
- * interval it measured was never the one the timer had actually run.
- */
-static void
-test_running_timer_persist (void)
-{
-    printf ("  test_running_timer_persist\n") ;
-    tv_fresh () ;
-
-    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
-    CHECK (tallies_start () == EOK, "start") ;
-
-    CHECK (TALLIES_START_TIMER(sys, uptime) == EOK, "start timer") ;
-
-    /* Three snapshots, the way the periodic pass would take them. */
-    _test_now += 100 ;
-    tallies_persist (1) ;
-    _test_now += 100 ;
-    tallies_persist (1) ;
-    _test_now += 100 ;
-    tallies_persist (1) ;
-
-    /* Still measured from the original start, and nothing banked twice. */
-    CHECK (TALLIES_GET(sys, uptime) == 300, "running timer %u, expected 300",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
-
-    CHECK (TALLIES_STOP_TIMER(sys, uptime) == EOK, "stop timer") ;
-    CHECK (TALLIES_GET(sys, uptime) == 300, "stopped timer %u, expected 300",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
+    /* raised after the pass that wrote it */
+    CHECK (TALLIES_ADD(sys, wdt, 1) == EOK, "add wdt again") ;
+    tallies_persist () ;
 
     tallies_stop () ;
 
     CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "re-register") ;
     CHECK (tallies_start () == EOK, "restart") ;
-    CHECK (TALLIES_GET(sys, uptime) == 300,
-            "uptime %u after reload, expected 300",
-            (unsigned)TALLIES_GET(sys, uptime)) ;
+    CHECK (TALLIES_GET(sys, wdt) == 2, "wdt %u after reload, expected 2",
+            (unsigned)TALLIES_GET(sys, wdt)) ;
+
+    tallies_stop () ;
+}
+
+/* The status snapshot reports the volume the counters actually went to. */
+static void
+test_status (void)
+{
+    NVOL3_STATUS_T st ;
+
+    printf ("  test_status\n") ;
+    tv_fresh () ;
+
+    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
+    CHECK (tallies_start () == EOK, "start") ;
+
+    CHECK (TALLIES_ADD(sys, wdt, 3) == EOK, "add wdt") ;
+    CHECK (TALLIES_ADD(sys, init, 1) == EOK, "add init") ;
+    tallies_persist () ;
+
+    CHECK (tallies_status_get (&st) == EOK, "status") ;
+    CHECK (st.records_used == 2, "records_used %u, expected 2",
+            (unsigned)st.records_used) ;
+    CHECK (st.records_max > st.records_used, "records_max %u not sane",
+            (unsigned)st.records_max) ;
+    CHECK (st.record_size >= TALLIES_RECORD_DATA_SIZE,
+            "record_size %u smaller than the payload",
+            (unsigned)st.record_size) ;
+    CHECK (st.sector_size > 0, "sector_size 0") ;
+    CHECK (st.hash_size > 0, "hash_size 0") ;
+    CHECK (st.hash_used > 0 && st.hash_used <= st.records_used,
+            "hash_used %u, expected 1..2", (unsigned)st.hash_used) ;
+    CHECK (st.hash_max_chain > 0, "hash_max_chain 0 with records loaded") ;
+    CHECK (st.lookup_bytes > 0, "lookup_bytes 0 with records loaded") ;
+
+    CHECK (tallies_status_get (0) != EOK, "null status accepted") ;
 
     tallies_stop () ;
 }
@@ -420,7 +369,7 @@ test_reset (void)
     CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
     CHECK (tallies_start () == EOK, "start") ;
     CHECK (TALLIES_ADD(sys, wdt, 42) == EOK, "add wdt") ;
-    tallies_persist (1) ;
+    tallies_persist () ;
 
     tallies_reset () ;
     CHECK (TALLIES_GET(sys, wdt) == 0, "wdt %u after reset",
@@ -475,9 +424,8 @@ main (void)
     test_register_before_and_after_start () ;
     test_id_reuse_resets () ;
     test_overlapping_base_rejected () ;
-    test_rate_limit () ;
-    test_timer () ;
-    test_running_timer_persist () ;
+    test_dirty_survives_persist () ;
+    test_status () ;
     test_bounds () ;
     test_reset () ;
     test_counts_before_start () ;

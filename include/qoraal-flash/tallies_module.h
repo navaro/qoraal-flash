@@ -36,7 +36,7 @@
  *   // src/example_tallies_lst.h
  *   TALLIE_DEF       (started)
  *   TALLIE_DEF       (tick)
- *   TALLIE_DEF_RATE  (poll, SECONDS_TEN)
+ *   TALLIE_DEF       (poll)
  * @endcode
  *
  * The module's own header declares the block:
@@ -120,9 +120,7 @@
 /*---------------------------------------------------------------------------*/
 
 #undef TALLIE_DEF
-#undef TALLIE_DEF_RATE
 #define TALLIE_DEF(x)           _TALLIES_ID(x) ,
-#define TALLIE_DEF_RATE(x, s)   _TALLIES_ID(x) ,
 
 typedef enum {
 #include TALLIES_MODULE_LIST
@@ -130,7 +128,6 @@ typedef enum {
 } _TALLIES_CAT(TALLIES_MODULE, _tallies_t) ;
 
 #undef TALLIE_DEF
-#undef TALLIE_DEF_RATE
 
 extern TALLIES_BLOCK_T _TALLIES_SYM(_tallies) ;
 
@@ -141,16 +138,13 @@ extern TALLIES_BLOCK_T _TALLIES_SYM(_tallies) ;
 /*---------------------------------------------------------------------------*/
 
 #undef TALLIE_DEF
-#undef TALLIE_DEF_RATE
-#define TALLIE_DEF(x)           { _TALLIES_STR(x), SECONDS_ZERO } ,
-#define TALLIE_DEF_RATE(x, s)   { _TALLIES_STR(x), (s) } ,
+#define TALLIE_DEF(x)           _TALLIES_STR(x) ,
 
-static const TALLIES_DEF_T  _TALLIES_SYM(_tallies_defs)[] = {
+static const char * const   _TALLIES_SYM(_tallies_defs)[] = {
 #include TALLIES_MODULE_LIST
 } ;
 
 #undef TALLIE_DEF
-#undef TALLIE_DEF_RATE
 
 static TALLIES_ENTRY_T      _TALLIES_SYM(_tallies_entry)[_TALLIES_ID(last)] ;
 static uint8_t              _TALLIES_SYM(_tallies_dirty)[_TALLIES_ID(last)] ;

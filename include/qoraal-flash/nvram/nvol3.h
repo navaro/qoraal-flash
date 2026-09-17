@@ -153,6 +153,47 @@ typedef struct NVOL3_CONFIG_S {
 } NVOL3_CONFIG_T ;
 
 /**
+ * @brief   A snapshot of a volume's state.
+ *
+ * Everything nvol3_entry_log_status() reports, returned rather than logged, so
+ * that a caller can render it wherever it likes - a shell session, a property,
+ * a publisher - and so that it is available in a release build, which the log
+ * is not.
+ *
+ * Several of these cannot be derived from the public config: records_max
+ * subtracts a page of sector header before dividing, and the sector versions
+ * and flags are read from FLASH. Computing them outside nvol3 would mean
+ * duplicating a formula that is free to change.
+ */
+typedef struct NVOL3_STATUS_S {
+    const char *        name ;              /**< @brief  volume name from the config */
+    uint32_t            records_used ;      /**< @brief  records in the lookup table */
+    uint32_t            records_max ;       /**< @brief  record slots in a sector */
+    uint32_t            inuse ;
+    uint32_t            invalid ;
+    uint32_t            error ;
+    uint32_t            next_idx ;          /**< @brief  next free slot in the current sector */
+    uint32_t            sector ;            /**< @brief  address of the sector in use */
+    uint32_t            sector_size ;
+    uint32_t            record_size ;
+    uint16_t            version ;           /**< @brief  sector version loaded from FLASH */
+    uint16_t            reserved ;
+
+    uint32_t            sector1_addr ;
+    uint32_t            sector1_flags ;
+    uint32_t            sector2_addr ;
+    uint32_t            sector2_flags ;
+    uint16_t            sector1_version ;
+    uint16_t            sector2_version ;
+
+    uint32_t            lookup_bytes ;      /**< @brief  heap held by the lookup table */
+    uint32_t            hash_size ;         /**< @brief  buckets in the dictionary */
+    uint32_t            hash_used ;         /**< @brief  buckets holding at least one record */
+    uint32_t            hash_max_chain ;    /**< @brief  longest chain, in records */
+
+} NVOL3_STATUS_T ;
+
+/**
  * @brief   instance of a volume.
  */
 typedef struct NVOL3_INSTANCE_S {
@@ -223,6 +264,13 @@ extern "C" {
     int32_t         nvol3_delete (NVOL3_INSTANCE_T* instance) ;
     int32_t         nvol3_repair (NVOL3_INSTANCE_T* instance) ;
     void            nvol3_unload (NVOL3_INSTANCE_T* instance) ;
+
+    /*
+     * Snapshot the volume state. Reads two sector headers from FLASH and walks
+     * the lookup table, so it is a diagnostic call, not a hot path. Takes no
+     * locks - the caller owns whatever serialises access to the instance.
+     */
+    int32_t         nvol3_status_get (NVOL3_INSTANCE_T* instance, NVOL3_STATUS_T * status) ;
 
     /*
      * API for writing to FLASH immediately.

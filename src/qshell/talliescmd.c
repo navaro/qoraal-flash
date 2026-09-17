@@ -77,6 +77,69 @@ tallies_dump (SVC_SHELL_IF_T * pif, const char * filter)
             (unsigned int)tallies_mismatched()) ;
 }
 
+/**
+ * @brief   Report the state of the volume the counters are persisted to.
+ *
+ * The snapshot is taken under the volume lock by tallies_status_get(); all of
+ * the printing below happens with that lock released, so a session on a slow
+ * transport cannot hold up the persist task.
+ */
+static void
+tallies_status (SVC_SHELL_IF_T * pif)
+{
+    NVOL3_STATUS_T status ;
+
+    if (tallies_status_get (&status) != EOK) {
+        svc_shell_print (pif, SVC_SHELL_OUT_STD,
+                "tallies volume not available" SVC_SHELL_NEWLINE) ;
+        return ;
+    }
+
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "volume   %s, version 0x%.4x" SVC_SHELL_NEWLINE,
+            status.name ? status.name : "(unnamed)",
+            (unsigned int)status.version) ;
+
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "records  %u of %u, %u inuse, %u invalid, %u error"
+            SVC_SHELL_NEWLINE,
+            (unsigned int)status.records_used, (unsigned int)status.records_max,
+            (unsigned int)status.inuse, (unsigned int)status.invalid,
+            (unsigned int)status.error) ;
+
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "sector   0x%.6x in use, %u bytes, %u per record, next slot %u"
+            SVC_SHELL_NEWLINE,
+            (unsigned int)status.sector, (unsigned int)status.sector_size,
+            (unsigned int)status.record_size, (unsigned int)status.next_idx) ;
+
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "         0x%.6x version 0x%.4x flags 0x%.8x" SVC_SHELL_NEWLINE,
+            (unsigned int)status.sector1_addr,
+            (unsigned int)status.sector1_version,
+            (unsigned int)status.sector1_flags) ;
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "         0x%.6x version 0x%.4x flags 0x%.8x" SVC_SHELL_NEWLINE,
+            (unsigned int)status.sector2_addr,
+            (unsigned int)status.sector2_version,
+            (unsigned int)status.sector2_flags) ;
+
+    /*
+     * The lookup table is the only part of this that costs RAM rather than
+     * FLASH, so it is the number worth watching when the hash size is tuned.
+     */
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "lookup   %u bytes, %u buckets, %u used, longest chain %u"
+            SVC_SHELL_NEWLINE,
+            (unsigned int)status.lookup_bytes, (unsigned int)status.hash_size,
+            (unsigned int)status.hash_used,
+            (unsigned int)status.hash_max_chain) ;
+
+    svc_shell_print (pif, SVC_SHELL_OUT_STD,
+            "reset    %u records dropped on load" SVC_SHELL_NEWLINE,
+            (unsigned int)tallies_mismatched()) ;
+}
+
 int32_t qshell_cmd_tallies (SVC_SHELL_IF_T * pif, char** argv, int argc)
 {
     if (argc > 1) {
@@ -88,14 +151,14 @@ int32_t qshell_cmd_tallies (SVC_SHELL_IF_T * pif, char** argv, int argc)
         }
 
         if (strcmp (argv[1], "persist") == 0) {
-            tallies_persist (1) ;
+            tallies_persist () ;
             svc_shell_print (pif, SVC_SHELL_OUT_STD,
                     "tallies persisted" SVC_SHELL_NEWLINE) ;
             return SVC_SHELL_CMD_E_OK ;
         }
 
         if (strcmp (argv[1], "status") == 0) {
-            tallies_log_status () ;
+            tallies_status (pif) ;
             return SVC_SHELL_CMD_E_OK ;
         }
 
@@ -106,19 +169,6 @@ int32_t qshell_cmd_tallies (SVC_SHELL_IF_T * pif, char** argv, int argc)
     tallies_dump (pif, 0) ;
 
     return SVC_SHELL_CMD_E_OK ;
-}
-
-void
-keep_talliescmds (void)
-{
-    (void)qshell_cmd_tallies ;
-}
-
-#else
-
-void
-keep_talliescmds (void)
-{
 }
 
 #endif /* CONFIG_QORAAL_FLASH_TALLIES */

@@ -35,9 +35,6 @@
 #include "qoraal-flash/nvram/nlog2.h"
 
 
-extern void    keep_syslogcmds (void) ;
-
-
 static p_mutex_t            _syslog_mutex ;
 static char                 _syslog_log_buffer[SYSLOGLOG_MAX_MSG_SIZE + sizeof(QORAAL_LOG_MSG_T)]   ;
 static SYSLOG_INSTANCE_T *  _syslog_instance = 0 ;
@@ -61,7 +58,6 @@ typedef struct _SYSLOG_IT_S {
  */
 int32_t syslog_init (SYSLOG_INSTANCE_T * inst)
 {
-    keep_syslogcmds () ; 
     _syslog_instance = inst ;
     _syslog_instance_cnt = 0 ;
 

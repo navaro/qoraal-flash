@@ -49,8 +49,6 @@ static int32_t registry_strsub_cb(STRSUB_REPLACE_CB cb, const char * str, size_t
 static STRSUB_HANDLER_T _registry_strsub ;
 #endif
 
-extern void     keep_registrycmds (void) ;
-
 static void 
 scratch_set_key(REGISTRY_KEY_T key, uint32_t len, uint16_t type) {
     size_t key_size = _registry_inst->config->key_size;
@@ -117,8 +115,6 @@ registry_init(REGISTRY_INSTANCE_T * inst)
 #if !defined CFG_REGISTRY_STRSUB_DISABLE
     strsub_install_handler(0, StrsubToken1, &_registry_strsub, registry_strsub_cb) ;
 #endif
-
-    keep_registrycmds () ;
 
     _registry_inst = inst ;
     

@@ -380,15 +380,3 @@ int32_t qshell_cmd_regstats (SVC_SHELL_IF_T * pif, char** argv, int argc)
 
     return SVC_SHELL_CMD_E_OK ;
 }
-
-void
-keep_registrycmds(void)
-{
-    (void)qshell_cmd_reg ;
-    (void)qshell_cmd_regadd ;
-    (void)qshell_cmd_regenum ;
-    (void)qshell_cmd_regdel ;
-    (void)qshell_cmd_regstats ;
-    (void)qshell_regerase ;
-    (void)qshell_regrepair ;
-}

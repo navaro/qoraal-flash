@@ -910,6 +910,82 @@ nvol3_callback_tallie (struct NVOL3_INSTANCE_S * inst,
     return EOK ;
 }
 
+int32_t
+nvol3_status_get (NVOL3_INSTANCE_T* instance, NVOL3_STATUS_T * status)
+{
+    const NVOL3_CONFIG_T    *   config ;
+    struct dictionary_it        it ;
+    struct dlist *              m ;
+    unsigned int                i, hashsize ;
+
+    if (!instance || !status) {
+        return E_PARM ;
+    }
+
+    config = instance->config ;
+    memset (status, 0, sizeof(NVOL3_STATUS_T)) ;
+
+    status->name         = config->name ;
+    status->records_max  = max_records (instance) ;
+    status->inuse        = instance->inuse ;
+    status->invalid      = instance->invalid ;
+    status->error        = instance->error ;
+    status->next_idx     = instance->next_idx ;
+    status->sector       = instance->sector ;
+    status->sector_size  = config->sector_size ;
+    status->record_size  = config->record_size ;
+    status->version      = instance->version ;
+
+    status->sector1_addr = config->sector1_addr ;
+    status->sector2_addr = config->sector2_addr ;
+    status->sector1_version = get_sector_version (config, config->sector1_addr,
+                    &status->sector1_flags) ;
+    status->sector2_version = get_sector_version (config, config->sector2_addr,
+                    &status->sector2_flags) ;
+
+    if (!instance->dict) {
+        /* Not loaded. Everything above still describes the configured volume. */
+        return EOK ;
+    }
+
+    status->records_used = dictionary_count (instance->dict) ;
+
+    /*
+     * The heap the lookup table is actually holding, counted the same way the
+     * verbose log counted it: the entry, any cached local value, the chain
+     * pointer and the key.
+     */
+    m = dictionary_it_first (instance->dict, &it, 0, 0, 0) ;
+    while (m) {
+        NVOL3_ENTRY_T* entry =
+                  (NVOL3_ENTRY_T*)dictionary_get_value(instance->dict, m) ;
+        status->lookup_bytes += sizeof(uint16_t) * 2 ;
+        if (entry->length <= config->local_size) {
+            status->lookup_bytes += entry->length ;
+        }
+        status->lookup_bytes += sizeof(struct dlist *) ;
+        if (!(config->keyspec & 0xFFFF)) {
+            status->lookup_bytes += sizeof (uintptr_t) ;
+        }
+        status->lookup_bytes += dictionary_get_key_size (instance->dict, m) ;
+        m = dictionary_it_next (instance->dict, &it) ;
+    }
+
+    hashsize = dictionary_hashtab_size (instance->dict) ;
+    status->hash_size = hashsize ;
+    for (i = 0; i < hashsize; i++) {
+        unsigned int cnt = dictionary_hashtab_cnt (instance->dict, i) ;
+        if (cnt > status->hash_max_chain) {
+            status->hash_max_chain = cnt ;
+        }
+        if (cnt) {
+            status->hash_used++ ;
+        }
+    }
+
+    return EOK ;
+}
+
 void
 nvol3_entry_log_status (NVOL3_INSTANCE_T* instance, uint32_t verbose)
 {

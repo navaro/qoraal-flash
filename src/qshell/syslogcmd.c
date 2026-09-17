@@ -85,10 +85,3 @@ int32_t qshell_cmd_assertlog (SVC_SHELL_IF_T * pif, char** argv, int argc)
 
     return _log (pif, 1,  severity,  cnt) ;
 }
-
-
-void
-keep_syslogcmds(void)
-{
-    (void)qshell_cmd_log ;
-}
