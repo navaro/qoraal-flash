@@ -52,3 +52,15 @@ else()
 endif()
 
 set_target_properties(talliestest PROPERTIES LINK_FLAGS "-T ${CMAKE_SOURCE_DIR}/test/posix.ld")
+
+# syslog (nlog3) regression tests - same standalone shape as nvol3test
+add_executable(syslogtest syslog_test.c)
+target_compile_options(syslogtest PRIVATE -O0 -g -Wall -Wextra)
+target_compile_definitions(syslogtest PRIVATE CFG_OS_POSIX)
+if(WIN32)
+    target_link_libraries(syslogtest qoraal qoraal-flash pthread ws2_32)
+else()
+    target_link_libraries(syslogtest qoraal qoraal-flash pthread)
+endif()
+
+set_target_properties(syslogtest PROPERTIES LINK_FLAGS "-T ${CMAKE_SOURCE_DIR}/test/posix.ld")
