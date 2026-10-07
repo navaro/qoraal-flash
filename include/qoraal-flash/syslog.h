@@ -32,9 +32,9 @@
 #include "qoraal/svc/svc_logger.h"
 #include "qoraal/common/rtclib.h"
 #include "qoraal/common/logit.h"
-#include "qoraal-flash/nvram/nlog2.h"
+#include "qoraal-flash/nvram/nlog3.h"
 
-#define DBG_MESSAGE_SYSLOG                                DBG_MESSAGE_T_LOG
+#define DBG_MESSAGE_SYSLOG                               DBG_MESSAGE_T_LOG
 #define DBG_ASSERT_SYSLOG                                 DBG_ASSERT_T
 
 /*===========================================================================*/
@@ -61,18 +61,22 @@
 /* Module data structures and types.                                         */
 /*===========================================================================*/
 
-#define SYSLOG_ITERATOR_T                   NLOG2_ITERATOR_T
+typedef struct SYSLOG_ITERATOR_S {
+    NLOG3_ITERATOR_T        it ;
+    uint16_t                severity ;      /**< least severe level the iterator stops on */
+} SYSLOG_ITERATOR_T ;
 
+/* nlog3 needs at least 3 sectors per log; one is always held back for the next sector change. */
 #define SYSLOG_LOG_MAX                      2
 typedef struct {
-    NLOG2_T  log[SYSLOG_LOG_MAX] ;    
+    NLOG3_T  log[SYSLOG_LOG_MAX] ;
 } SYSLOG_INSTANCE_T ;
 
 #define SYSLOG_INST_DECL(name, start, info_sector_count, info_sector_size, assert_sector_count, assert_sector_size) \
     static SYSLOG_INSTANCE_T name = { \
         {  \
-            NLOG2_LOG_DATA(start, info_sector_count, info_sector_size), \
-            NLOG2_LOG_DATA(start+info_sector_count*info_sector_size, assert_sector_count, assert_sector_size) \
+            NLOG3_LOG_DATA(start, info_sector_count, info_sector_size), \
+            NLOG3_LOG_DATA(start+info_sector_count*info_sector_size, assert_sector_count, assert_sector_size) \
         }  \
     };
 
