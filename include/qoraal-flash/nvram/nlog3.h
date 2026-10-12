@@ -88,6 +88,7 @@ typedef struct NLOG3_S {
     uint32_t            startaddr;
     uint32_t            sectorcount;
     uint32_t            sectorsize;
+    uint32_t            version;
     uint32_t            current_sector;
     uint32_t            current_sequence;
     uint32_t            staged_sector;
@@ -97,8 +98,16 @@ typedef struct NLOG3_S {
     uint8_t             current_closed;
 } NLOG3_T;
 
-#define NLOG3_LOG_DATA(start, count, sectorsize)        {start, count, sectorsize, 0U, 0U, 0U, 0U, NLOG3_RECORD_OFFSET_NONE, 0U, 0U}
-#define NLOG3_LOG_DECL(name, start, count, sectorsize)  NLOG3_T name = NLOG3_LOG_DATA(start, count, sectorsize)
+/*
+ * version is the log's own layout version, written into every sector header.
+ * Change it when the log moves, resizes or changes its record format: sectors
+ * written under another version are rejected, so nlog3_init() wipes the log
+ * and it starts empty.
+ */
+#define NLOG3_LOG_DATA_VER(start, count, sectorsize, version)        {start, count, sectorsize, version, 0U, 0U, 0U, 0U, NLOG3_RECORD_OFFSET_NONE, 0U, 0U}
+#define NLOG3_LOG_DATA(start, count, sectorsize)                     NLOG3_LOG_DATA_VER(start, count, sectorsize, 0U)
+#define NLOG3_LOG_DECL_VER(name, start, count, sectorsize, version)  NLOG3_T name = NLOG3_LOG_DATA_VER(start, count, sectorsize, version)
+#define NLOG3_LOG_DECL(name, start, count, sectorsize)               NLOG3_T name = NLOG3_LOG_DATA(start, count, sectorsize)
 
 /*===========================================================================*/
 /* External declarations.                                                     */
