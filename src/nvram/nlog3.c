@@ -33,10 +33,13 @@
 #define FLASH_ERASE(start, end)          qoraal_flash_erase((start), (end))
 
 #define NLOG3_LOG_RECORD_ALIGN           8U
+/* The on-flash format version, one value with and one without payload CRC.
+ * Bump both whenever the sector or record header layout changes: a log in
+ * another format is unreadable, so it starts empty. */
 #if defined(CFG_NLOG3_PAYLOAD_CRC)
-#define NLOG3_SECTOR_VERSION             7U
+#define NLOG3_SECTOR_VERSION             9U
 #else
-#define NLOG3_SECTOR_VERSION             6U
+#define NLOG3_SECTOR_VERSION             8U
 #endif
 #define NLOG3_RECORD_MAGIC               0x33474C4EU
 #define NLOG3_SECTOR_MAGIC               0x33534C4EU
@@ -57,6 +60,7 @@ typedef struct NLOG3_SECTOR_HEADER_S {
     uint32_t version;
     uint32_t sequence;
     uint32_t sector_size;
+    uint32_t log_version;
     uint32_t header_crc;
 } NLOG3_SECTOR_HEADER_T;
 #pragma pack()
@@ -280,9 +284,13 @@ nlog3_sector_header_read(NLOG3_T *plog,
     if (!nlog3_sector_state_is_readable(header->state)) {
         return E_NOTFOUND;
     }
+    /* A sector of another log version is treated like a corrupt one. When no
+     * valid sector remains, nlog3_init() resets the log, which is what wipes
+     * it after a version change. */
     if ((header->magic != NLOG3_SECTOR_MAGIC) ||
         (header->version != NLOG3_SECTOR_VERSION) ||
-        (header->sector_size != plog->sectorsize)) {
+        (header->sector_size != plog->sectorsize) ||
+        (header->log_version != plog->version)) {
         return E_CORRUPT;
     }
     if (header->header_crc != nlog3_sector_header_crc(header)) {
@@ -306,6 +314,7 @@ nlog3_sector_write_header(NLOG3_T *plog,
     header.version = NLOG3_SECTOR_VERSION;
     header.sequence = sequence;
     header.sector_size = plog->sectorsize;
+    header.log_version = plog->version;
     header.header_crc = nlog3_sector_header_crc(&header);
 
     res = nlog3_write_pending_header(nlog3_sector_addr(plog, sector),

@@ -765,6 +765,58 @@ test_rollback_to_nlog2 (void)
     CHECK (sl_collect (0, SYSLOG_SEVERITY_DEBUG) == 0, "nlog2 data showed up as records") ;
 }
 
+/* A raw nlog3 log in the FLASH the syslog leaves free. */
+#define TEST_VER_START      (8u * 1024u)
+#define TEST_VER_SECTORS    4u
+
+/* Counts the records of a raw nlog3 log, newest to oldest. */
+static int
+ver_count (NLOG3_T *plog)
+{
+    NLOG3_ITERATOR_T it ;
+    int n = 0 ;
+    int32_t res = nlog3_iterator_init (plog, &it) ;
+
+    while (res == EOK) {
+        n++ ;
+        res = nlog3_iterator_prev (&it) ;
+    }
+    return n ;
+}
+
+/* Changing a log's version wipes it; keeping the version keeps the records. */
+static void
+test_log_version_change (void)
+{
+    NLOG3_T v1 = NLOG3_LOG_DATA_VER(TEST_VER_START, TEST_VER_SECTORS, TEST_SECTOR_SIZE, 1U) ;
+    NLOG3_T v2 = NLOG3_LOG_DATA_VER(TEST_VER_START, TEST_VER_SECTORS, TEST_SECTOR_SIZE, 2U) ;
+    NLOG3_RECORD_DESC_T desc ;
+    int i ;
+
+    printf ("  test_log_version_change\n") ;
+    sl_power_restore () ;
+    test_flash_erase (TEST_VER_START, TEST_VER_START + TEST_VER_SECTORS * TEST_SECTOR_SIZE - 1) ;
+    memset (&desc, 0, sizeof(desc)) ;
+
+    CHECK (nlog3_init (&v1) == EOK, "init of version 1 failed") ;
+    /* Crosses two sector boundaries, so several headers carry the version,
+     * but stays below the 27 records these four sectors keep before wrapping. */
+    for (i = 0; i < 20; i++) {
+        CHECK (nlog3_append (&v1, &desc, 16, "version 1 record") == EOK, "append %d failed", i) ;
+    }
+    CHECK (ver_count (&v1) == 20, "version 1 holds %d records", ver_count (&v1)) ;
+
+    CHECK (nlog3_init (&v1) == EOK, "re-init of version 1 failed") ;
+    CHECK (ver_count (&v1) == 20, "same version lost records: %d left", ver_count (&v1)) ;
+
+    CHECK (nlog3_init (&v2) == EOK, "init of version 2 failed") ;
+    CHECK (ver_count (&v2) == 0, "version 2 read %d version 1 records", ver_count (&v2)) ;
+    CHECK (nlog3_append (&v2, &desc, 16, "version 2 record") == EOK, "append after wipe failed") ;
+    CHECK (nlog3_init (&v2) == EOK && ver_count (&v2) == 1, "version 2 did not keep its record") ;
+
+    CHECK (nlog3_init (&v1) == EOK && ver_count (&v1) == 0, "going back to version 1 read version 2 records") ;
+}
+
 /* The logger callback runs on many threads; half use each append path. */
 #define THREADS             6
 #define PER_THREAD          400
@@ -851,6 +903,7 @@ main (void)
     test_reset () ;
     test_upgrade_from_nlog2 () ;
     test_rollback_to_nlog2 () ;
+    test_log_version_change () ;
     test_concurrent_appends () ;
 
     if (_started) {
