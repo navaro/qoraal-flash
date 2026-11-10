@@ -468,7 +468,7 @@ tallies_stop (void)
 
     /* Clear first so the persist task does not reschedule itself under us. */
     _tallies_started = 0 ;
-    svc_tasks_cancel_wait (&_tallies_task, 1000) ;
+    svc_tasks_cancel_wait (&_tallies_task, SVC_TASK_MS2TICKS(1000)) ;
 
     tallies_persist_bounded (0) ;
 
