@@ -679,6 +679,57 @@ tallies_clear (TALLIES_BLOCK_T * blk, uint16_t local)
     return EOK ;
 }
 
+int32_t
+tallies_clear_by_name (const char * name)
+{
+    TALLIES_BLOCK_T * blk ;
+    const char * dot ;
+    const char * tallie ;
+    size_t len ;
+    int32_t cleared = 0 ;
+
+    if (!name) {
+        return E_PARM ;
+    }
+    if (!_tallies_inst) {
+        return E_UNEXP ;
+    }
+
+    /* "module" or "module.tallie", the same names the shell lists. */
+    dot = strchr (name, '.') ;
+    len = dot ? (size_t)(dot - name) : strlen (name) ;
+    tallie = dot ? dot + 1 : 0 ;
+
+    if (!len || (tallie && !*tallie)) {
+        return E_PARM ;
+    }
+
+    for (blk = _tallies_blocks; blk; blk = blk->next) {
+        uint16_t local ;
+
+        if ((strncmp (blk->name, name, len) != 0) || blk->name[len]) {
+            continue ;
+        }
+
+        for (local = 0; local < blk->count; local++) {
+            if (tallie && (strcmp (blk->defs[local], tallie) != 0)) {
+                continue ;
+            }
+            if (tallies_clear (blk, local) == EOK) {
+                cleared++ ;
+            }
+        }
+    }
+
+    if (!cleared) {
+        return E_NOTFOUND ;
+    }
+
+    tallies_persist_bounded (0) ;
+
+    return cleared ;
+}
+
 /*===========================================================================*/
 /* Read back.                                                                */
 /*===========================================================================*/

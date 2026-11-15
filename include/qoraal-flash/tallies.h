@@ -224,6 +224,18 @@ typedef struct TALLIES_BLOCK_S {
     int32_t     tallies_set (TALLIES_BLOCK_T * blk, uint16_t local, uint32_t value) ;
     int32_t     tallies_clear (TALLIES_BLOCK_T * blk, uint16_t local) ;
 
+    /*
+     * Clear by display name, for the shell and other operator interfaces:
+     * "module" clears every tallie in that module's block, "module.tallie"
+     * clears one. Unlike tallies_clear() the zeros are written out before it
+     * returns, as tallies_reset() does, so a reset that cannot run code does
+     * not bring the old values back.
+     *
+     * Returns the number of tallies cleared, E_NOTFOUND when nothing matches,
+     * or E_PARM when the module or tallie part is empty.
+     */
+    int32_t     tallies_clear_by_name (const char * name) ;
+
     /* Read back. */
     uint32_t    tallies_get_value (TALLIES_BLOCK_T * blk, uint16_t local) ;
     int32_t     tallies_get (TALLIES_BLOCK_T * blk, uint16_t local, TALLIES_ENTRY_T * out) ;
