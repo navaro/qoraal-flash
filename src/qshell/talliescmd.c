@@ -6,7 +6,8 @@
 
 #if defined CONFIG_QORAAL_FLASH_TALLIES && CONFIG_QORAAL_FLASH_TALLIES
 
-SVC_SHELL_CMD_DECL( "tallies", qshell_cmd_tallies,  "[reset|<module>]");
+SVC_SHELL_CMD_DECL( "tallies", qshell_cmd_tallies,
+        "[reset|clear <module>[.<tallie>]|persist|status|<module>]");
 
 /*
  * Dumps every registered block. This is the same walk a publisher will do:
@@ -147,6 +148,31 @@ int32_t qshell_cmd_tallies (SVC_SHELL_IF_T * pif, char** argv, int argc)
             tallies_reset () ;
             svc_shell_print (pif, SVC_SHELL_OUT_STD,
                     "tallies reset" SVC_SHELL_NEWLINE) ;
+            return SVC_SHELL_CMD_E_OK ;
+        }
+
+        if (strcmp (argv[1], "clear") == 0) {
+            int32_t res ;
+
+            if (argc < 3) {
+                return SVC_SHELL_CMD_E_PARMS ;
+            }
+
+            res = tallies_clear_by_name (argv[2]) ;
+            if (res == E_NOTFOUND) {
+                svc_shell_print (pif, SVC_SHELL_OUT_STD,
+                        "no module or tallie '%s'" SVC_SHELL_NEWLINE, argv[2]) ;
+                return SVC_SHELL_CMD_E_NOT_FOUND ;
+            }
+            if (res == E_PARM) {
+                return SVC_SHELL_CMD_E_PARMS ;
+            }
+            if (res < 0) {
+                return SVC_SHELL_CMD_E_FAIL ;
+            }
+
+            svc_shell_print (pif, SVC_SHELL_OUT_STD,
+                    "%d tallies cleared" SVC_SHELL_NEWLINE, (int)res) ;
             return SVC_SHELL_CMD_E_OK ;
         }
 

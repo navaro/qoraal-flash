@@ -135,13 +135,27 @@ static int _checks ;
         }                                                               \
     } while (0)
 
-/* Drop everything and start from an erased volume. */
+/* The RAM half of a block, which outlives unregistering it. */
+static void
+block_zero (TALLIES_BLOCK_T * blk)
+{
+    memset (blk->entry, 0, blk->count * sizeof (blk->entry[0])) ;
+    memset (blk->dirty, TALLIES_CLEAN, blk->count) ;
+}
+
+/*
+ * Drop everything and start from an erased volume, and from zeros in RAM, so
+ * a test counting before tallies_start() does not see what the last one left.
+ */
 static void
 tv_fresh (void)
 {
     tallies_unregister (&_sys_tallies) ;
     tallies_unregister (&_mod_tallies) ;
     tallies_unregister (&_alt_tallies) ;
+    block_zero (&_sys_tallies) ;
+    block_zero (&_mod_tallies) ;
+    block_zero (&_alt_tallies) ;
     test_flash_erase (0, TEST_FLASH_SIZE - 1) ;
     _tv.sector = 0 ;
     _tv.next_idx = 0 ;
@@ -385,6 +399,70 @@ test_reset (void)
 }
 
 /*
+ * Clear by display name: one tallie, then a whole block. The zeros are on the
+ * volume when it returns, not waiting for the persist task.
+ */
+static void
+test_clear_by_name (void)
+{
+    printf ("  test_clear_by_name\n") ;
+    tv_fresh () ;
+
+    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "register sys") ;
+    CHECK (tallies_register (&_mod_tallies, MOD_BASE) == EOK, "register mod") ;
+    CHECK (tallies_start () == EOK, "start") ;
+    CHECK (TALLIES_ADD(sys, wdt, 5) == EOK, "add wdt") ;
+    CHECK (TALLIES_ADD(sys, init, 3) == EOK, "add init") ;
+    CHECK (TALLIES_ADD(mod, started, 2) == EOK, "add started") ;
+    CHECK (TALLIES_ADD(mod, poll, 4) == EOK, "add poll") ;
+    tallies_persist () ;
+
+    /* one tallie */
+    CHECK (tallies_clear_by_name ("sys.wdt") == 1, "sys.wdt not cleared") ;
+    CHECK (TALLIES_GET(sys, wdt) == 0, "sys.wdt %u after clear",
+            (unsigned)TALLIES_GET(sys, wdt)) ;
+    CHECK (TALLIES_GET(sys, init) == 3, "sys.init %u, expected 3",
+            (unsigned)TALLIES_GET(sys, init)) ;
+    CHECK (_sys_tallies.dirty[__sys_tallie_wdt] == TALLIES_CLEAN,
+            "sys.wdt cleared but not written") ;
+
+    /* a whole block */
+    CHECK (tallies_clear_by_name ("mod") == 2, "mod not cleared") ;
+    CHECK (TALLIES_GET(mod, started) == 0, "mod.started %u after clear",
+            (unsigned)TALLIES_GET(mod, started)) ;
+    CHECK (TALLIES_GET(mod, poll) == 0, "mod.poll %u after clear",
+            (unsigned)TALLIES_GET(mod, poll)) ;
+    CHECK (_mod_tallies.dirty[__mod_tallie_poll] == TALLIES_CLEAN,
+            "mod.poll cleared but not written") ;
+    CHECK (TALLIES_GET(sys, init) == 3, "clearing mod touched sys.init") ;
+
+    /* names have to match whole */
+    CHECK (tallies_clear_by_name ("sys.nope") == E_NOTFOUND, "unknown tallie") ;
+    CHECK (tallies_clear_by_name ("nope") == E_NOTFOUND, "unknown module") ;
+    CHECK (tallies_clear_by_name ("sy") == E_NOTFOUND, "module prefix matched") ;
+    CHECK (tallies_clear_by_name ("sys.wd") == E_NOTFOUND, "tallie prefix matched") ;
+    CHECK (tallies_clear_by_name ("sys.") == E_PARM, "empty tallie accepted") ;
+    CHECK (tallies_clear_by_name (".wdt") == E_PARM, "empty module accepted") ;
+    CHECK (tallies_clear_by_name ("") == E_PARM, "empty name accepted") ;
+    CHECK (tallies_clear_by_name (0) == E_PARM, "null name accepted") ;
+    CHECK (TALLIES_GET(sys, init) == 3, "a failed clear touched sys.init") ;
+
+    /* the zeros survive a reload */
+    tallies_stop () ;
+    CHECK (tallies_register (&_sys_tallies, SYS_BASE) == EOK, "re-register sys") ;
+    CHECK (tallies_register (&_mod_tallies, MOD_BASE) == EOK, "re-register mod") ;
+    CHECK (tallies_start () == EOK, "restart") ;
+    CHECK (TALLIES_GET(sys, wdt) == 0, "sys.wdt %u came back",
+            (unsigned)TALLIES_GET(sys, wdt)) ;
+    CHECK (TALLIES_GET(sys, init) == 3, "sys.init %u after reload",
+            (unsigned)TALLIES_GET(sys, init)) ;
+    CHECK (TALLIES_GET(mod, poll) == 0, "mod.poll %u came back",
+            (unsigned)TALLIES_GET(mod, poll)) ;
+
+    tallies_stop () ;
+}
+
+/*
  * A counter has to work before the volume is up - "we ran out of memory" is
  * exactly the event you want a tallie for.
  */
@@ -428,6 +506,7 @@ main (void)
     test_status () ;
     test_bounds () ;
     test_reset () ;
+    test_clear_by_name () ;
     test_counts_before_start () ;
 
     printf ("\n%d checks, %d failure(s)\n", _checks, _failures) ;
