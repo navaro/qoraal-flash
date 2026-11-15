@@ -135,13 +135,27 @@ static int _checks ;
         }                                                               \
     } while (0)
 
-/* Drop everything and start from an erased volume. */
+/* The RAM half of a block, which outlives unregistering it. */
+static void
+block_zero (TALLIES_BLOCK_T * blk)
+{
+    memset (blk->entry, 0, blk->count * sizeof (blk->entry[0])) ;
+    memset (blk->dirty, TALLIES_CLEAN, blk->count) ;
+}
+
+/*
+ * Drop everything and start from an erased volume, and from zeros in RAM, so
+ * a test counting before tallies_start() does not see what the last one left.
+ */
 static void
 tv_fresh (void)
 {
     tallies_unregister (&_sys_tallies) ;
     tallies_unregister (&_mod_tallies) ;
     tallies_unregister (&_alt_tallies) ;
+    block_zero (&_sys_tallies) ;
+    block_zero (&_mod_tallies) ;
+    block_zero (&_alt_tallies) ;
     test_flash_erase (0, TEST_FLASH_SIZE - 1) ;
     _tv.sector = 0 ;
     _tv.next_idx = 0 ;
